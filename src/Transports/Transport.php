@@ -14,6 +14,7 @@ use Cristal\ApiWrapper\Exceptions\Handlers\UnauthorizedErrorHandler;
 use Cristal\ApiWrapper\MultipartParam;
 use Curl\Curl as CurlClient;
 use CURLFile;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Class Transport
@@ -102,14 +103,17 @@ class Transport implements TransportInterface
         $rawResponse = $this->rawRequest($endpoint, $data, $method);
         $httpStatusCode = $this->getClient()->httpStatusCode;
         $response = json_decode($rawResponse, true);
-
         if ($httpStatusCode >= 200 && $httpStatusCode <= 299) {
             return $response;
         }
 
         $exception = new ApiException(
             $response,
-            $response['message'] ?? $rawResponse ?? 'Unknown error message',
+            sprintf(
+                'The request ended on a %s code : %s',
+                $httpStatusCode,
+                $this->arrayGet($response ?? [], $this->getErrorKey()) ?? $rawResponse ?? 'Unknown error message'
+            ),
             $httpStatusCode
         );
 
@@ -118,6 +122,11 @@ class Transport implements TransportInterface
         }
 
         throw $exception;
+    }
+
+    public function getErrorKey(): string
+    {
+        return 'message';
     }
 
     /**
@@ -130,6 +139,7 @@ class Transport implements TransportInterface
         switch ($method) {
             case 'get':
                 $url = $this->getUrl($endpoint, $data);
+                ddd($url);
                 $this->getClient()->get($url);
                 break;
             case 'post':
@@ -143,9 +153,13 @@ class Transport implements TransportInterface
                 $url = $this->getUrl($endpoint);
                 $this->getClient()->put($url, $this->encodeBody($data));
                 break;
+            case 'patch':
+                $url = $this->getUrl($endpoint);
+                $this->getClient()->patch($url, $this->encodeBody($data));
+                break;
             case 'delete':
                 $url = $this->getUrl($endpoint);
-                $this->getClient()->delete($url, $this->encodeBody($data));
+                $this->getClient()->delete($url, $data);
                 break;
         }
 
@@ -163,7 +177,6 @@ class Transport implements TransportInterface
     protected function getUrl(string $endpoint, array $data = [])
     {
         $url = $this->getEntrypoint() . ltrim($endpoint, '/');
-
         return $url . $this->appendData($data);
     }
 
@@ -229,5 +242,21 @@ class Transport implements TransportInterface
 
         $this->getClient()->setHeader('Content-Type', static::JSON_MIME_TYPE);
         return json_encode($data);
+    }
+
+    public function getResponseHeaders(): array
+    {
+        return iterator_to_array($this->getClient()->getResponseHeaders());
+    }
+
+    protected function arrayGet(array $array, string $key)
+    {
+        $exploded = explode('.', $key, 2);
+
+        if (!isset($exploded[1])) {
+            return $array[$key] ?? null;
+        }
+
+        return $this->arrayGet($array[$exploded[0]], $exploded[1]);
     }
 }

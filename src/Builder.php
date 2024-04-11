@@ -1,6 +1,6 @@
 <?php
 
-namespace  Cristal\ApiWrapper;
+namespace Cristal\ApiWrapper;
 
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
 
@@ -18,12 +18,17 @@ class Builder
      */
     protected $query = [];
 
+    protected $orderBys = [];
+
+    protected $relations = [];
+
     /**
      * The model being queried.
      *
      * @var Model
      */
     protected $model;
+
 
     /**
      * Get the underlying query builder instance.
@@ -32,6 +37,13 @@ class Builder
      */
     public function getQuery()
     {
+        // Load relations if specified
+        if (!empty($this->relations)) {
+            $this->loadRelations();
+        }
+        return $this->query;
+        // Ffix: array_merge() expects at least 1 parameter, 0 given ($this->scopes is null) #53
+        // https://github.com/CristalTeam/php-api-wrapper/issues/53
         return array_merge(
             array_merge(...array_values($this->scopes)),
             $this->query
@@ -106,7 +118,7 @@ class Builder
             return $this->where($this->query)->get()[0] ?? null;
         }
 
-        $data = $this->model->getApi()->{'get'.ucfirst($this->model->getEntity())}($field, $this->getQuery());
+        $data = $this->model->getApi()->{'get' . ucfirst($this->model->getEntity())}($field, $this->getQuery());
 
         return $this->model->newInstance($data, true);
     }
@@ -163,6 +175,82 @@ class Builder
     }
 
     /**
+     * Add an "order by" clause to the query.
+     *
+     * @param string $column
+     * @param string $direction
+     * @author AndreiTanase
+     * @since 2024-03-28
+     *
+     */
+    public function orderBy($column, $direction = 'asc')
+    {
+        $this->orderBys[] = ['column' => $column, 'direction' => strtoupper($direction) == 'ASC' ? 'ASC' : 'DESC'];
+        return $this;
+    }
+
+    /**
+     * Apply order bys to the query.
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-03-28
+     *
+     */
+    protected function applyOrderBys()
+    {
+        foreach ($this->orderBys as $orderBy) {
+            if (is_array($orderBy) && isset($orderBy['column'], $orderBy['direction']) &&
+                is_string($orderBy['column']) && is_string($orderBy['direction'])) {
+                $this->query = array_merge($this->query,
+                    [
+                        "order_by" =>
+                            [
+                                'column' => "{$orderBy['column']}",
+                                'direction' => "{$orderBy['direction']}"
+                            ]
+                    ]);
+            }
+        }
+    }
+
+    /**
+     * Add an "with" clause to the query.
+     *
+     * @param mixed $relations
+     * @author AndreiTanase
+     * @since 2024-04-01
+     *
+     */
+    public function with($relations)
+    {
+        if (is_string($relations)) {
+            $relations = func_get_args();
+        }
+
+        $this->relations = array_merge($this->relations, $relations);
+
+        return $this;
+    }
+
+    /**
+     * Load relations if specified in the query.
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-01
+     */
+    protected function loadRelations()
+    {
+        foreach ($this->relations as $relation) {
+            if (isset($relation) && is_string($relation)) {
+                $withRelation['with'][] = $relation;
+            }
+        }
+        $this->query = array_merge($this->query,$withRelation);
+    }
+
+    /**
      * Set the limit and offset for a given page.
      *
      * @param int $page
@@ -179,7 +267,7 @@ class Builder
      * Register a new global scope.
      *
      * @param string $identifier
-     * @param array  $scope
+     * @param array $scope
      *
      * @return $this
      */
@@ -193,7 +281,7 @@ class Builder
     /**
      * Remove a registered global scope.
      *
-     * @param  string  $identifier
+     * @param string $identifier
      * @return $this
      */
     public function withoutGlobalScope(string $identifier)
@@ -223,13 +311,13 @@ class Builder
      * Dynamically handle calls into the query instance.
      *
      * @param string $method
-     * @param array  $parameters
+     * @param array $parameters
      *
      * @return mixed
      */
     public function __call($method, $parameters)
     {
-        if (method_exists($this->model, $scope = 'scope'.ucfirst($method))) {
+        if (method_exists($this->model, $scope = 'scope' . ucfirst($method))) {
             return $this->callScope([$this->model, $scope], $parameters);
         }
 
@@ -251,6 +339,8 @@ class Builder
      */
     public function get()
     {
+        // Apply order bys feture.
+        $this->applyOrderBys();
         $entities = $this->raw();
 
         return $this->instanciateModels($entities);
@@ -260,7 +350,7 @@ class Builder
     {
         $instance = $this->getModel();
         try {
-            return $instance->getApi()->{'get'.ucfirst($instance->getEntities())}($this->getQuery());
+            return $instance->getApi()->{'get' . ucfirst($instance->getEntities())}($this->getQuery());
         } catch (ApiEntityNotFoundException $e) {
             return [];
         }

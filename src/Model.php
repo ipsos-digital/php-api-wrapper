@@ -11,8 +11,11 @@ use Cristal\ApiWrapper\Concerns\HidesAttributes;
 use Cristal\ApiWrapper\Exceptions\ApiException;
 use Cristal\ApiWrapper\Exceptions\MissingApiException;
 use Exception;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Str;
 use JsonSerializable;
 
+//abstract class Model extends Authenticatable implements ArrayAccess, JsonSerializable
 abstract class Model implements ArrayAccess, JsonSerializable
 {
     use HasAttributes;
@@ -117,10 +120,10 @@ abstract class Model implements ArrayAccess, JsonSerializable
     public function getEntities(): string
     {
         if (substr($this->entity, -1) === 'y') {
-            return rtrim($this->entity, 'y').'ies';
+            return rtrim($this->entity, 'y') . 'ies';
         }
 
-        return rtrim($this->entity, 's').'s';
+        return rtrim($this->entity, 's') . 's';
     }
 
     public function __construct($fill = [], $exists = false)
@@ -172,6 +175,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
         return $model;
     }
 
+    // @TODO: Improve thie function, with focus on the elseif ($key === "relations" && is_array($value))
     /**
      * Fills the entry with the supplied attributes.
      *
@@ -187,6 +191,32 @@ abstract class Model implements ArrayAccess, JsonSerializable
                 $this->setRelation($key,
                     $this->$key()->getRelationsFromArray($value)
                 );
+                // Custom case for internal relations | @author AndreiTanase
+                // Keep with eager loading and skip the direct relation from model...
+                // (skipping the relation method via api call)
+            } elseif ($key === "relations" && is_array($value)) {
+                $proxyModelsPath = 'App\Models\Proxy\\';
+                foreach ($value as $relationName => $relationData) {
+                    if (method_exists($this, $relationName)) {
+                        $explodeRelationName = explode('_', $relationName);
+                        $relationBaseClassName = collect($explodeRelationName)->map(function($word){
+                            return Str::ucfirst($word);
+                        })->implode('');
+                        $relationBaseClassName = $relationBaseClassName . 'Proxy';
+                        if (class_exists($proxyModelsPath . $relationBaseClassName)) {
+                            $proxyModelClass = $proxyModelsPath . $relationBaseClassName;
+                            $relationInstance = new $proxyModelClass;
+                        }
+                        if (!isset($relationInstance) || !($relationInstance instanceof Model)) {
+                            $relationInstance = $this->$relationName(); // Get related model instance for the relation
+                        }
+                        // The relation name must exits in the proxy model!
+                        if (is_array($relationData)) {
+                            $relationModel = $relationInstance->newInstance($relationData, true); // Assuming relationData is suitable for creating a new instance
+                            $this->setRelation($relationName, $relationModel);
+                        }
+                    }
+                }
             } else {
                 $this->setAttribute($key, $value);
             }
@@ -200,7 +230,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * Handle dynamic method calls into the model.
      *
      * @param string $method
-     * @param array  $parameters
+     * @param array $parameters
      *
      * @return mixed
      */
@@ -213,7 +243,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * Handle dynamic static method calls into the method.
      *
      * @param string $method
-     * @param array  $parameters
+     * @param array $parameters
      *
      * @return mixed
      */
@@ -238,7 +268,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * Dynamically set attributes on the model.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return void
      */
@@ -295,7 +325,6 @@ abstract class Model implements ArrayAccess, JsonSerializable
     public function toJson($options = 0)
     {
         $json = json_encode($this->jsonSerialize(), $options);
-
         if (JSON_ERROR_NONE !== json_last_error()) {
             throw new \Exception($this, json_last_error_msg());
         }
@@ -523,9 +552,9 @@ abstract class Model implements ArrayAccess, JsonSerializable
     /**
      * Save the model and all of its relationships.
      *
+     * @return bool
      * @throws
      *
-     * @return bool
      */
     public function push()
     {
@@ -564,7 +593,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
         $dirty = $this->getDirty();
 
         if (count($dirty) > 0) {
-            $updatedField = $this->getApi()->{'update'.ucfirst($this->getEntity())}($this->{$this->primaryKey}, $dirty);
+            $updatedField = $this->getApi()->{'update' . ucfirst($this->getEntity())}($this->{$this->primaryKey}, $dirty);
             $this->fill($updatedField);
             $this->syncChanges();
         }
@@ -580,7 +609,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     protected function performInsert()
     {
         $attributes = $this->getAttributes();
-        $updatedField = $this->getApi()->{'create'.ucfirst($this->getEntity())}($attributes);
+        $updatedField = $this->getApi()->{'create' . ucfirst($this->getEntity())}($attributes);
         $this->fill($updatedField);
         $this->exists = true;
         $this->wasRecentlyCreated = true;
@@ -595,7 +624,10 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     protected function performDeleteOnModel()
     {
-        $this->getApi()->{'delete'.ucfirst($this->getEntity())}($this->{$this->primaryKey});
+        $this->getApi()->{'delete' . ucfirst($this->getEntity())}(
+            $this->{$this->primaryKey},
+            array_merge(...array_values($this->getGlobalScopes()))
+        );
 
         $this->exists = false;
     }
@@ -655,16 +687,21 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * Create a new instance of the given model.
      *
      * @param array $attributes
-     * @param bool  $exists
+     * @param bool $exists
      *
      * @return static
      */
     public function newInstance($attributes = [], $exists = false)
     {
-        $model = new static((array) $attributes);
-
+        // Ffix: Model::find($id) returns an empty Model as opposed to null
+        // https://github.com/CristalTeam/php-api-wrapper/issues/33
+        if (count($attributes) === 0) {
+            return null;
+        }
+        $model = new static((array)$attributes);
         $model->exists = $exists;
 
         return $model;
+
     }
 }
