@@ -2,7 +2,11 @@
 
 namespace Cristal\ApiWrapper\Concerns;
 
+use DateTimeInterface;
+use Carbon\CarbonInterface;
 use Cristal\ApiWrapper\Model;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use LogicException;
 use Cristal\ApiWrapper\Relations\RelationInterface;
 
@@ -93,14 +97,14 @@ trait HasAttributes
      */
     public function hasSetMutator($key)
     {
-        return method_exists($this, 'set'.self::studly($key).'Attribute');
+        return method_exists($this, 'set' . self::studly($key) . 'Attribute');
     }
 
     /**
      * Cast an attribute to a native PHP type.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return mixed
      */
@@ -113,16 +117,16 @@ trait HasAttributes
         switch ($this->getCastType($key)) {
             case 'int':
             case 'integer':
-                return (int) $value;
+                return (int)$value;
             case 'real':
             case 'float':
             case 'double':
-                return (float) $value;
+                return (float)$value;
             case 'string':
-                return (string) $value;
+                return (string)$value;
             case 'bool':
             case 'boolean':
-                return (bool) $value;
+                return (bool)$value;
             case 'object':
                 return $this->fromJson($value, true);
             case 'array':
@@ -155,7 +159,7 @@ trait HasAttributes
      * Decode the given JSON back into an array or object.
      *
      * @param string $value
-     * @param bool   $asObject
+     * @param bool $asObject
      *
      * @return mixed
      */
@@ -168,7 +172,7 @@ trait HasAttributes
      * Set a given attribute on the model.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return $this
      */
@@ -178,7 +182,7 @@ trait HasAttributes
         // which simply lets the developers tweak the attribute as it is set on
         // the model, such as "json_encoding" an listing of data for storage.
         if ($this->hasSetMutator($key)) {
-            $method = 'set'.self::studly($key).'Attribute';
+            $method = 'set' . self::studly($key) . 'Attribute';
 
             return $this->{$method}($value);
         }
@@ -186,7 +190,7 @@ trait HasAttributes
         // If an attribute is listed as a "date", we'll convert it from a DateTime
         // instance into a form proper for storage on the database tables using
         // the connection grammar's date format. We will auto set the values.
-        if ($value && $this->isDateAttribute($key)) {
+        if (!is_null($value) && $this->isDateAttribute($key)) {
             $value = $this->fromDateTime($value);
         }
 
@@ -288,7 +292,7 @@ trait HasAttributes
         $relation = $this->$method();
 
         if (!$relation instanceof RelationInterface) {
-            throw new LogicException(get_class($this).'::'.$method.' must return a relationship instance.');
+            throw new LogicException(get_class($this) . '::' . $method . ' must return a relationship instance.');
         }
 
         $results = $relation->getResults();
@@ -365,13 +369,13 @@ trait HasAttributes
      * Get the value of an attribute using its mutator.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return mixed
      */
     protected function mutateAttribute($key, $value)
     {
-        return $this->{'get'.self::studly($key).'Attribute'}($value);
+        return $this->{'get' . self::studly($key) . 'Attribute'}($value);
     }
 
     /**
@@ -383,7 +387,7 @@ trait HasAttributes
      */
     public function hasGetMutator($key)
     {
-        return method_exists($this, 'get'.self::studly($key).'Attribute');
+        return method_exists($this, 'get' . self::studly($key) . 'Attribute');
     }
 
     /**
@@ -407,31 +411,100 @@ trait HasAttributes
      */
     protected function asDateTime($value)
     {
-        // If this value is already a DataTimeInterface instance, we shall just return it as is.
-        if ($value instanceof \DateTimeInterface) {
+        // If this value is already a Carbon instance, we shall just return it as is.
+        // This prevents us having to re-instantiate a Carbon instance when we know
+        // it already is one, which wouldn't be fulfilled by the DateTime check.
+        if ($value instanceof Carbon) {
             return $value;
+        }
+
+        // If the value is already a DateTime instance, we will just skip the rest of
+        // these checks since they will be a waste of time, and hinder performance
+        // when checking the field. We will just return the DateTime right away.
+        if ($value instanceof DateTimeInterface) {
+            return new Carbon(
+                $value->format('Y-m-d H:i:s.u'), $value->getTimezone()
+            );
         }
 
         // If this value is an integer, we will assume it is a UNIX timestamp's value
         // and format a Carbon object from this timestamp. This allows flexibility
         // when defining your date fields as they might be UNIX timestamps here.
         if (is_numeric($value)) {
-            return (new \DateTime())->setTimestamp($value);
+            return Carbon::createFromTimestamp($value);
         }
 
         // If the value is in simply year, month, day format, we will instantiate the
         // Carbon instances from that format. Again, this provides for simple date
         // fields on the database, while still supporting Carbonized conversion.
         if ($this->isStandardDateFormat($value)) {
-            return \DateTime::createFromFormat('Y-m-d H:i:s', $value.' 00:00:00');
+            return Carbon::createFromFormat('Y-m-d', $value)->startOfDay();
         }
+
+        // Check for ISO 8601 format.
+        if ($this->isDateFormat($value)){
+            // Convert to Carbon instance
+            $date = Carbon::createFromFormat('Y-m-d\TH:i:s.u\Z', $value, 'UTC');
+            $value = $date->format('Y-m-d H:i:s');
+        }
+        $format = $this->getDateFormat();
 
         // Finally, we will just assume this date is in the format used by default on
         // the database connection and use that format to create the Carbon object
         // that is returned back out to the developers after we convert it here.
-        return \DateTime::createFromFormat(
-            str_replace('.v', '.u', $this->getDateFormat()), $value
-        );
+        try {
+            $date = Carbon::createFromFormat($format, $value);
+        } catch (InvalidArgumentException $exception) {
+            Log::error('Could not parse date: ' . $value);
+            Log::error($exception->getMessage());
+            $date = false;
+        }
+
+        return $date ?: Carbon::parse($value);
+    }
+
+    /**
+     * Checks if the given date string matches the specified date format exactly.
+     * This function uses Carbon's createFromFormat to attempt to parse the date string according to the given format.
+     * If the date can be successfully parsed and formatted back to its original string without alteration, it is considered a match.
+     *
+     * @param string $dateString The date string to be checked.
+     * @param string $format The date format string against which to validate the date string.
+     * Defaults to 'Y-m-d\TH:i:s.u\Z', which includes time up to microseconds and the 'Z' timezone identifier (UTC).
+     *
+     * @return bool Returns true if the date string exactly matches the format, false otherwise.
+     * The function returns false if any part of the date string is out of place according to the specified format or if the date string is invalid.
+     *
+     * @example Usage:
+     * if (isDateFormat("2019-02-27T13:57:43.000000Z", 'Y-m-d\TH:i:s.u\Z')) {
+     *     echo "The string matches the format.";
+     * } else {
+     *     echo "The string does not match the format.";
+     * }
+     *
+     * @throws \Exception Throws an exception if the Carbon library encounters a problem while parsing the date.
+     * The try-catch block inside the function handles these exceptions to prevent them from causing a crash
+     * and instead returns false to indicate the mismatch or parsing failure.
+     *
+     * @author AndreiTanase
+     * @since 2024-04-11
+     */
+    protected function isDateFormat($dateString, $format = 'Y-m-d\TH:i:s.u\Z') {
+        try {
+            // Create a date object from the given string and format
+            $date = Carbon::createFromFormat($format, $dateString, 'UTC');
+
+            // Check if formatted date matches the original string exactly
+            if ($date && $date->format($format) === $dateString) {
+                return true;
+            }
+        } catch (\Exception $e) {
+            // If an exception is thrown, the format does not match
+            return false;
+        }
+
+        // Return false if the formats do not match
+        return false;
     }
 
     /**
@@ -441,13 +514,13 @@ trait HasAttributes
      */
     protected function getDateFormat()
     {
-        return $this->dateFormat;
+        return $this->dateFormat ?: $this->getConnection()->getQueryGrammar()->getDateFormat();
     }
 
     /**
      * Determine whether an attribute should be cast to a native type.
      *
-     * @param string            $key
+     * @param string $key
      * @param array|string|null $types
      *
      * @return bool
@@ -455,7 +528,7 @@ trait HasAttributes
     public function hasCast($key, $types = null)
     {
         if (array_key_exists($key, $this->getCasts())) {
-            return $types ? in_array($this->getCastType($key), (array) $types, true) : true;
+            return $types ? in_array($this->getCastType($key), (array)$types, true) : true;
         }
 
         return false;
@@ -525,7 +598,7 @@ trait HasAttributes
      * Get a model instance.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return Model|null
      */
@@ -603,7 +676,7 @@ trait HasAttributes
      * Determine if the new and old values for a given key are equivalent.
      *
      * @param string $key
-     * @param mixed  $current
+     * @param mixed $current
      *
      * @return bool
      */
@@ -620,7 +693,7 @@ trait HasAttributes
         }
 
         return is_numeric($current) && is_numeric($original)
-            && strcmp((string) $current, (string) $original) === 0;
+            && strcmp((string)$current, (string)$original) === 0;
     }
 
     /**
@@ -768,13 +841,13 @@ trait HasAttributes
      * Get the value of an attribute using its mutator for array conversion.
      *
      * @param string $key
-     * @param mixed  $value
+     * @param mixed $value
      *
      * @return mixed
      */
     protected function mutateAttributeForArray($key, $value)
     {
-        return $this->{'get'.self::studly($key).'Attribute'}($value);
+        return $this->{'get' . self::studly($key) . 'Attribute'}($value);
     }
 
     /**
