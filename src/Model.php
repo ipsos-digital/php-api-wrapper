@@ -185,45 +185,65 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function fill(array $attributes = [])
     {
-        // start_measure('fill-model', 'Création de l\'objet '.static::class);
         foreach ($attributes as $key => $value) {
-            if (is_array($value) && method_exists($this, $key)) {
-                $this->setRelation($key,
-                    $this->$key()->getRelationsFromArray($value)
-                );
-                // Custom case for internal relations | @author AndreiTanase
-                // Keep with eager loading and skip the direct relation from model...
-                // (skipping the relation method via api call)
-            } elseif ($key === "relations" && is_array($value)) {
-                $proxyModelsPath = 'App\Models\Proxy\\';
-                foreach ($value as $relationName => $relationData) {
-                    if (method_exists($this, $relationName)) {
-                        $explodeRelationName = explode('_', $relationName);
-                        $relationBaseClassName = collect($explodeRelationName)->map(function($word){
-                            return Str::ucfirst($word);
-                        })->implode('');
-                        $relationBaseClassName = $relationBaseClassName . 'Proxy';
-                        if (class_exists($proxyModelsPath . $relationBaseClassName)) {
-                            $proxyModelClass = $proxyModelsPath . $relationBaseClassName;
-                            $relationInstance = new $proxyModelClass;
-                        }
-                        if (!isset($relationInstance) || !($relationInstance instanceof Model)) {
-                            $relationInstance = $this->$relationName(); // Get related model instance for the relation
-                        }
-                        // The relation name must exits in the proxy model!
-                        if (is_array($relationData)) {
-                            $relationModel = $relationInstance->newInstance($relationData, true); // Assuming relationData is suitable for creating a new instance
-                            $this->setRelation($relationName, $relationModel);
-                        }
-                    }
-                }
+            if ($key === 'relations' && is_array($value)) {
+                $this->handleRelations($value);
             } else {
                 $this->setAttribute($key, $value);
             }
         }
-        // stop_measure('fill-model');
-
         return $this;
+    }
+
+    /**
+     * @param array $relations
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-11
+     */
+    protected function handleRelations(array $relations)
+    {
+        $proxyModelsPath = 'App\Models\Proxy\\';
+        foreach ($relations as $relationName => $relationData) {
+            $relationInstance = $this->getRelationInstance($relationName, $proxyModelsPath);
+            if ($relationInstance && is_array($relationData)) {
+                $relationModel = $relationInstance->newInstance($relationData, true);
+                $this->setRelation($relationName, $relationModel);
+            }
+        }
+    }
+
+    /**
+     * @param $relationName
+     * @param $proxyModelsPath
+     * @return mixed|null
+     * @author AndreiTanase
+     * @since 2024-04-11
+     */
+    protected function getRelationInstance($relationName, $proxyModelsPath)
+    {
+        if (!method_exists($this, $relationName)) return null;
+
+        $relationBaseClassName = $this->assembleClassName($relationName);
+        $fullClassName = $proxyModelsPath . $relationBaseClassName . 'Proxy';
+        if (class_exists($fullClassName)) {
+            return new $fullClassName;
+        }
+
+        return $this->$relationName();
+    }
+
+    /**
+     * @param $relationName
+     * @return string
+     * @author AndreiTanase
+     * @since 2024-04-11
+     */
+    protected function assembleClassName($relationName)
+    {
+        return collect(explode('_', $relationName))
+            ->map([Str::class, 'ucfirst'])
+            ->implode('');
     }
 
     /**
