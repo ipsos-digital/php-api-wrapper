@@ -3,6 +3,8 @@
 namespace Cristal\ApiWrapper;
 
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Log;
 
 class Builder
 {
@@ -41,7 +43,9 @@ class Builder
         if (!empty($this->relations)) {
             $this->loadRelations();
         }
+
         return $this->query;
+
         // Ffix: array_merge() expects at least 1 parameter, 0 given ($this->scopes is null) #53
         // https://github.com/CristalTeam/php-api-wrapper/issues/53
         return array_merge(
@@ -88,17 +92,34 @@ class Builder
         return $this->model;
     }
 
-    public function first()
+    public function first($columns = ['*'])
     {
-        return $this->get()[0] ?? null;
+        return $this->take(1)->get($columns)->first() ?? null;
     }
 
-    public function find($field, $value = null)
+    /**
+     * Execute the query and get the first result or throw an exception.
+     *
+     * @param  array  $columns
+     * @return \Illuminate\Database\Eloquent\Model|static
+     *
+     * @throws ModelNotFoundException
+     *
+     */
+    public function firstOrFail($columns = ['*'])
+    {
+        if (! is_null($model = $this->first($columns))) {
+            return $model;
+        }
+
+        throw (new ModelNotFoundException)->setModel(get_class($this->model));
+    }
+
+    public function find($field, $columns = ['*'], $value = null)
     {
         $res = null;
-
         try {
-            $res = $this->findOrFail($field, $value);
+            $res = $this->findOrFail($field, $columns, $value);
         } catch (ApiEntityNotFoundException $e) {
             return null;
         }
@@ -106,17 +127,21 @@ class Builder
         return $res;
     }
 
-    public function findOrFail($field, $value = null)
+    public function findOrFail($field, $columns = ['*'], $value = null)
     {
+        if (!isset($this->query['columns']) && !empty($columns)) {
+            $this->query['columns'] = $columns;
+        }
+
         if (is_array($field)) {
             $this->query = array_merge($this->query, ['id' => $field]);
-
-            return $this->where($this->query)->get();
+            return $this->where($this->query)->get($columns);
         } elseif (!is_int($field) && $value !== null && count($this->query)) {
             $this->query = array_merge($this->query, [$field => $value]);
-
-            return $this->where($this->query)->get()[0] ?? null;
+            return $this->where($this->query)->get($columns)[0] ?? null;
         }
+
+
 
         $data = $this->model->getApi()->{'get' . ucfirst($this->model->getEntity())}($field, $this->getQuery());
 
@@ -139,6 +164,30 @@ class Builder
 
         $this->query = array_merge($this->query, $field);
 
+        return $this;
+    }
+
+    /**
+     * Add a "where null" condition to the query.
+     *
+     * @param string $column
+     * @return $this
+     */
+    public function whereNull($column)
+    {
+        $this->query['is_null'][] = [$column => 'NULL'];
+        return $this;
+    }
+
+    /**
+     * Add a "where not null" condition to the query.
+     *
+     * @param string $column
+     * @return $this
+     */
+    public function whereNotNull($column)
+    {
+        $this->query['is_not_null'][] = $column;
         return $this;
     }
 
@@ -337,10 +386,13 @@ class Builder
      *
      * @return array|static[]
      */
-    public function get()
+    public function get($columns = ['*'])
     {
+        // Modify the query to specify columns if not all are needed
+        $this->query['columns'] = $columns;
         // Apply order bys feture.
         $this->applyOrderBys();
+
         $entities = $this->raw();
 
         return $this->instanciateModels($entities);
@@ -352,6 +404,7 @@ class Builder
         try {
             return $instance->getApi()->{'get' . ucfirst($instance->getEntities())}($this->getQuery());
         } catch (ApiEntityNotFoundException $e) {
+            Log::error($e->getMessage());
             return [];
         }
     }

@@ -10,9 +10,9 @@ class Builder extends CoreBuilder
     /**
      * @return array|CoreBuilder[]
      */
-    public function get()
+    public function get($columns = ['*'])
     {
-        return collect(parent::get());
+        return collect(parent::get($columns));
     }
 
     /**
