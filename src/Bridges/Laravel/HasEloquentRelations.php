@@ -29,6 +29,7 @@ trait HasEloquentRelations
 
         $foreignKey = $foreignKey ?: $this->getForeignKey();
         $localKey = $localKey ?: $this->getKeyName();
+
         // Support Eloquent relations.
         if ($instance instanceof Eloquent) {
             return new HasMany($instance->newQuery(), $this->createFakeEloquentModel(), $foreignKey, $localKey);

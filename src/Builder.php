@@ -24,6 +24,8 @@ class Builder
 
     protected $relations = [];
 
+    protected $withTrashed = false;
+
     /**
      * The model being queried.
      *
@@ -42,6 +44,10 @@ class Builder
         // Load relations if specified
         if (!empty($this->relations)) {
             $this->loadRelations();
+        }
+
+        if ($this->withTrashed) {
+            $this->query['with_trashed'] = '1';
         }
 
         return $this->query;
@@ -160,6 +166,18 @@ class Builder
     {
         if (!is_array($field)) {
             $field = [$field => $value];
+        } else {
+            // Fix this:
+            // http_build_query() function in PHP to construct URL query strings, it automatically
+            // omits parameters with null values and translates boolean values (true and false)
+            // into integers (1 and an empty string, respectively)
+            array_walk_recursive($field, function (&$item) {
+                if (is_bool($item)) {
+                    $item = $item ? 'true' : 'false';
+                } elseif (is_null($item)) {
+                    $item = 'null';
+                }
+            });
         }
 
         $this->query = array_merge($this->query, $field);
@@ -261,6 +279,20 @@ class Builder
                     ]);
             }
         }
+    }
+
+    /**
+     * Include soft-deleted records in the query results.
+     *
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-13
+     *
+     */
+    public function withTrashed()
+    {
+        $this->withTrashed = true;
+        return $this;
     }
 
     /**
