@@ -3,8 +3,11 @@
 namespace Cristal\ApiWrapper;
 
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
+use Illuminate\Database\Eloquent\Model as Eloquent;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class Builder
 {
@@ -106,15 +109,15 @@ class Builder
     /**
      * Execute the query and get the first result or throw an exception.
      *
-     * @param  array  $columns
+     * @param array $columns
      * @return \Illuminate\Database\Eloquent\Model|static
      *
-     * @throws ModelNotFoundException
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      *
      */
     public function firstOrFail($columns = ['*'])
     {
-        if (! is_null($model = $this->first($columns))) {
+        if (!is_null($model = $this->first($columns))) {
             return $model;
         }
 
@@ -148,65 +151,9 @@ class Builder
         }
 
 
-
         $data = $this->model->getApi()->{'get' . ucfirst($this->model->getEntity())}($field, $this->getQuery());
 
         return $this->model->newInstance($data, true);
-    }
-
-    /**
-     * Add a basic where clause to the query.
-     *
-     * @param      $field
-     * @param null $value
-     *
-     * @return self
-     */
-    public function where($field, $value = null)
-    {
-        if (!is_array($field)) {
-            $field = [$field => $value];
-        } else {
-            // Fix this:
-            // http_build_query() function in PHP to construct URL query strings, it automatically
-            // omits parameters with null values and translates boolean values (true and false)
-            // into integers (1 and an empty string, respectively)
-            array_walk_recursive($field, function (&$item) {
-                if (is_bool($item)) {
-                    $item = $item ? 'true' : 'false';
-                } elseif (is_null($item)) {
-                    $item = 'null';
-                }
-            });
-        }
-
-        $this->query = array_merge($this->query, $field);
-
-        return $this;
-    }
-
-    /**
-     * Add a "where null" condition to the query.
-     *
-     * @param string $column
-     * @return $this
-     */
-    public function whereNull($column)
-    {
-        $this->query['is_null'][] = [$column => 'NULL'];
-        return $this;
-    }
-
-    /**
-     * Add a "where not null" condition to the query.
-     *
-     * @param string $column
-     * @return $this
-     */
-    public function whereNotNull($column)
-    {
-        $this->query['is_not_null'][] = $column;
-        return $this;
     }
 
     /**
@@ -215,6 +162,26 @@ class Builder
     public function all()
     {
         return $this->take(static::MAX_RESULTS)->get();
+    }
+
+    /**
+     * Execute the query.
+     *
+     * @return array|static[]
+     */
+    public function get($columns = ['*'])
+    {
+        // Modify the query to specify columns if not all are needed
+        $this->query['columns'] = $columns;
+        // Apply order bys feture.
+        $this->applyOrderBys();
+
+        // Apply whereDoesntHave feature.
+        $this->applyWhereDoesntHave();
+
+        $entities = $this->raw();
+
+        return $this->instanciateModels($entities);
     }
 
     /**
@@ -257,31 +224,6 @@ class Builder
     }
 
     /**
-     * Apply order bys to the query.
-     *
-     * @return void
-     * @author AndreiTanase
-     * @since 2024-03-28
-     *
-     */
-    protected function applyOrderBys()
-    {
-        foreach ($this->orderBys as $orderBy) {
-            if (is_array($orderBy) && isset($orderBy['column'], $orderBy['direction']) &&
-                is_string($orderBy['column']) && is_string($orderBy['direction'])) {
-                $this->query = array_merge($this->query,
-                    [
-                        "order_by" =>
-                            [
-                                'column' => "{$orderBy['column']}",
-                                'direction' => "{$orderBy['direction']}"
-                            ]
-                    ]);
-            }
-        }
-    }
-
-    /**
      * Include soft-deleted records in the query results.
      *
      * @return $this
@@ -312,23 +254,6 @@ class Builder
         $this->relations = array_merge($this->relations, $relations);
 
         return $this;
-    }
-
-    /**
-     * Load relations if specified in the query.
-     *
-     * @return void
-     * @author AndreiTanase
-     * @since 2024-04-01
-     */
-    protected function loadRelations()
-    {
-        foreach ($this->relations as $relation) {
-            if (isset($relation) && is_string($relation)) {
-                $withRelation['with'][] = $relation;
-            }
-        }
-        $this->query = array_merge($this->query,$withRelation);
     }
 
     /**
@@ -413,23 +338,6 @@ class Builder
         return $this;
     }
 
-    /**
-     * Execute the query.
-     *
-     * @return array|static[]
-     */
-    public function get($columns = ['*'])
-    {
-        // Modify the query to specify columns if not all are needed
-        $this->query['columns'] = $columns;
-        // Apply order bys feture.
-        $this->applyOrderBys();
-
-        $entities = $this->raw();
-
-        return $this->instanciateModels($entities);
-    }
-
     public function raw()
     {
         $instance = $this->getModel();
@@ -466,5 +374,180 @@ class Builder
             'per_page' => $entities[static::PAGINATION_MAPPING_PER_PAGE] ?? $perPage,
             'current_page' => $entities[static::PAGINATION_MAPPING_CURRENT_PAGE] ?? $page
         ];
+    }
+
+    /**
+     * Add a basic where clause to the query.
+     *
+     * @param      $field
+     * @param null $value
+     *
+     * @return self
+     */
+    public function where($column, $operator = null, $value = null)
+    {
+        if (!is_array($column)) {
+            if ($value){
+                $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $value) !== false;
+                $value = $checkIfValueIsDateTime ? Carbon::parse($value)->format('Y-m-d H:i:s') : $value;
+            } elseif ($operator) {
+                $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $operator) !== false;
+                $operator = $checkIfValueIsDateTime ? Carbon::parse($operator)->format('Y-m-d H:i:s') : $operator;
+            }
+            if(!$operator) {
+                $column = [$column => $value];
+            } else if($column && $operator && $value) {
+                $column = [[$column, $operator, $value]];
+            } else if ($column && $operator && !$value){
+                $column = [$column => $operator];
+            }
+        } else {
+            // Fix this:
+            // http_build_query() function in PHP to construct URL query strings, it automatically
+            // omits parameters with null values and translates boolean values (true and false)
+            // into integers (1 and an empty string, respectively)
+            array_walk_recursive($column, function (&$item) {
+                if (is_bool($item)) {
+                    $item = $item ? 'true' : 'false';
+                } elseif (is_null($item)) {
+                    $item = 'null';
+                }
+                // Check if the value is a date
+                $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $item) !== false;
+                $item = $checkIfValueIsDateTime ? Carbon::parse($item)->format('Y-m-d H:i:s') : $item;
+            });
+        }
+dd($column);
+        $this->query = array_merge($this->query, $column);
+
+        return $this;
+    }
+
+    /**
+     * Add a "where null" condition to the query.
+     *
+     * @param string $column
+     * @return $this
+     */
+    public function whereNull($column)
+    {
+        $this->query['is_null'][] = [$column => 'NULL'];
+        return $this;
+    }
+
+    /**
+     * Add a "where not null" condition to the query.
+     *
+     * @param string $column
+     * @return $this
+     */
+    public function whereNotNull($column)
+    {
+        $this->query['is_not_null'][] = $column;
+        return $this;
+    }
+
+    /**
+     * @param $relation
+     * @param $callback
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    public function whereDoesntHave($relation, $callback = null)
+    {
+        // Check if the relation is an Eloquent model
+        // Rule: If the relation is not an Eloquent model, then it is a proxy relation and is ok to be set
+        if (!$this->checkIfModelIsInstanceOfEloquent($relation)) {
+            $this->query['where_doesnt_have'][] = [
+                'relation' => $relation,
+                'callback' => $callback
+            ];
+        }
+        return $this;
+    }
+
+    /**
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    protected function applyWhereDoesntHave()
+    {
+        if (isset($this->query['where_doesnt_have'])) {
+            foreach ($this->query['where_doesnt_have'] as $condition) {
+                // Assuming `checkRelationshipAbsence` is a method that applies the logic to find if no related records exist
+                if ($condition['callback']) {
+                    $condition['callback']($this, $condition['relation']);
+                }
+            }
+        }
+    }
+
+    /**
+     * Apply order bys to the query.
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-03-28
+     *
+     */
+    protected function applyOrderBys()
+    {
+        foreach ($this->orderBys as $orderBy) {
+            if (is_array($orderBy) && isset($orderBy['column'], $orderBy['direction']) &&
+                is_string($orderBy['column']) && is_string($orderBy['direction'])) {
+                $this->query = array_merge($this->query,
+                    [
+                        "order_by" =>
+                            [
+                                'column' => "{$orderBy['column']}",
+                                'direction' => "{$orderBy['direction']}"
+                            ]
+                    ]);
+            }
+        }
+    }
+
+    /**
+     * Load relations if specified in the query.
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-01
+     */
+    protected function loadRelations()
+    {
+        foreach ($this->relations as $relation) {
+            if (isset($relation) && is_string($relation) &&
+                method_exists($this->getModel(), $relation)) {
+                $withRelation['with'][] = $relation;
+            }
+        }
+        $this->query = array_merge($this->query, $withRelation);
+    }
+
+    /**
+     * @param $relationName
+     * @return mixed|null
+     * @author AndreiTanase
+     * @since 2024-04-11
+     */
+    protected function checkIfModelIsInstanceOfEloquent($relationName)
+    {
+        if (!method_exists($this->getModel(), $relationName)) return false;
+
+        $getRealationInstance = $this->getModel()->$relationName();
+        $getRelationModelInstance = $getRealationInstance->getModel();
+
+        if ($getRelationModelInstance instanceof Eloquent) {
+            return true;
+        }
+
+        return false;
+
     }
 }
