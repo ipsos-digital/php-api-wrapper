@@ -29,6 +29,9 @@ class Builder
 
     protected $withTrashed = false;
 
+    protected $fields = [];
+
+
     /**
      * The model being queried.
      *
@@ -53,10 +56,16 @@ class Builder
             $this->query['with_trashed'] = '1';
         }
 
-        return $this->query;
+        if (!empty($this->fields)) {
+            $this->query['fields'] = $this->fields;
+        }
 
         // Ffix: array_merge() expects at least 1 parameter, 0 given ($this->scopes is null) #53
         // https://github.com/CristalTeam/php-api-wrapper/issues/53
+        if (empty($this->scopes)) {
+            return $this->query;
+        }
+
         return array_merge(
             array_merge(...array_values($this->scopes)),
             $this->query
@@ -175,9 +184,10 @@ class Builder
         $this->query['columns'] = $columns;
         // Apply order bys feture.
         $this->applyOrderBys();
-
         // Apply whereDoesntHave feature.
         $this->applyWhereDoesntHave();
+        // Apply whereHas feature.
+        $this->applyWhereHas();
 
         $entities = $this->raw();
 
@@ -194,6 +204,20 @@ class Builder
     public function take($value)
     {
         return $this->limit($value);
+    }
+
+    /**
+     * Set the fields to be retrieved from the API.
+     *
+     * @param mixed ...$fields
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-16
+     */
+    public function select(...$fields)
+    {
+        $this->fields = array_merge($this->fields, $fields);
+        return $this;
     }
 
     /**
@@ -417,7 +441,7 @@ class Builder
                 $item = $checkIfValueIsDateTime ? Carbon::parse($item)->format('Y-m-d H:i:s') : $item;
             });
         }
-dd($column);
+
         $this->query = array_merge($this->query, $column);
 
         return $this;
@@ -445,46 +469,6 @@ dd($column);
     {
         $this->query['is_not_null'][] = $column;
         return $this;
-    }
-
-    /**
-     * @param $relation
-     * @param $callback
-     * @return $this
-     * @author AndreiTanase
-     * @since 2024-04-15
-     *
-     */
-    public function whereDoesntHave($relation, $callback = null)
-    {
-        // Check if the relation is an Eloquent model
-        // Rule: If the relation is not an Eloquent model, then it is a proxy relation and is ok to be set
-        if (!$this->checkIfModelIsInstanceOfEloquent($relation)) {
-            $this->query['where_doesnt_have'][] = [
-                'relation' => $relation,
-                'callback' => $callback
-            ];
-        }
-        return $this;
-    }
-
-    /**
-     *
-     * @return void
-     * @author AndreiTanase
-     * @since 2024-04-15
-     *
-     */
-    protected function applyWhereDoesntHave()
-    {
-        if (isset($this->query['where_doesnt_have'])) {
-            foreach ($this->query['where_doesnt_have'] as $condition) {
-                // Assuming `checkRelationshipAbsence` is a method that applies the logic to find if no related records exist
-                if ($condition['callback']) {
-                    $condition['callback']($this, $condition['relation']);
-                }
-            }
-        }
     }
 
     /**
@@ -549,5 +533,86 @@ dd($column);
 
         return false;
 
+    }
+
+
+    /**
+     * @param $relation
+     * @param $callback
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    public function whereDoesntHave($relation, $callback = null)
+    {
+        // Check if the relation is an Eloquent model
+        // Rule: If the relation is not an Eloquent model, then it is a proxy relation and is ok to be set
+        if (!$this->checkIfModelIsInstanceOfEloquent($relation)) {
+            $this->query['where_doesnt_have'][] = [
+                'relation' => $relation,
+                'callback' => $callback
+            ];
+        }
+        return $this;
+    }
+
+    /**
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    protected function applyWhereDoesntHave()
+    {
+        if (isset($this->query['where_doesnt_have'])) {
+            foreach ($this->query['where_doesnt_have'] as $condition) {
+                //Not impemented yet because the callback is an Instance of Closure and it is not possible to send it to the API
+                if ($condition['callback']) {
+                    $condition['callback']($this, $condition['relation']);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param $relation
+     * @param $callback
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    public function whereHas($relation, $callback = null)
+    {
+        // Check if the relation is an Eloquent model
+        // Rule: If the relation is not an Eloquent model, then it is a proxy relation and is ok to be set
+        if (!$this->checkIfModelIsInstanceOfEloquent($relation)) {
+            $this->query['where_has'][] = [
+                'relation' => $relation,
+                'callback' => $callback // Not impemented yet because the callback is an Instance of Closure and it is not possible to send it to the API
+            ];
+        }
+        return $this;
+    }
+
+    /**
+     *
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-04-15
+     *
+     */
+    protected function applyWhereHas()
+    {
+        if (isset($this->query['where_has'])) {
+            foreach ($this->query['where_has'] as $condition) {
+                //Not impemented yet because the callback is an Instance of Closure and it is not possible to send it to the API
+                if ($condition['callback']) {
+                    $condition['callback']($this, $condition['relation']);
+                }
+            }
+        }
     }
 }
