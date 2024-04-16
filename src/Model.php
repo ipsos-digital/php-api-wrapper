@@ -8,6 +8,7 @@ use Cristal\ApiWrapper\Concerns\HasAttributes;
 use Cristal\ApiWrapper\Concerns\HasRelationships;
 use Cristal\ApiWrapper\Concerns\HasGlobalScopes;
 use Cristal\ApiWrapper\Concerns\HidesAttributes;
+use Cristal\ApiWrapper\Concerns\QueriesRelationships;
 use Cristal\ApiWrapper\Exceptions\ApiException;
 use Cristal\ApiWrapper\Exceptions\MissingApiException;
 use Exception;
@@ -22,6 +23,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     use HasRelationships;
     use HasGlobalScopes;
     use HidesAttributes;
+    use QueriesRelationships;
 
     /**
      * The entity model's name on Api.
