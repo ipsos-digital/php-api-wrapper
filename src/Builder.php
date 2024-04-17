@@ -20,21 +20,37 @@ class Builder
     const PAGINATION_MAPPING_CURRENT_PAGE = 'current_page';
 
     /**
+     * @var bool
+     */
+    protected $database_strictness = true;
+    /**
      * @var array
      */
     protected $query = [];
-
+    /**
+     * @var array
+     */
     protected $orderBys = [];
-
+    /**
+     * @var array
+     */
     protected $relations = [];
-
+    /**
+     * @var bool
+     */
     protected $withTrashed = false;
-
+    /**
+     * @var array
+     */
     protected $fields = [];
-
+    /**
+     * @var array
+     */
     protected $grouping = [];
-
-    protected $database_strictness = true;
+    /**
+     * @var array
+     */
+    protected $conditions = [];
 
     /**
      * The model being queried.
@@ -688,8 +704,28 @@ class Builder
                 }
             }
         }
-
     }
 
+    /**
+     * Add a "where in" clause to the query.
+     *
+     * @param string $column
+     * @param array $values
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-17
+     */
+    public function whereIn($column, array $values)
+    {
+        $this->conditions[] = [
+            'type' => 'whereIn',
+            'column' => $column,
+            'values' => $values,
+        ];
+        
+        $this->query['conditions'] = $this->conditions;
+
+        return $this;
+    }
 
 }
