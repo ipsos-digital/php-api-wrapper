@@ -2,6 +2,7 @@
 
 namespace Cristal\ApiWrapper;
 
+use App\Classes\Common;
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
 use Illuminate\Database\Eloquent\Model as Eloquent;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -31,6 +32,9 @@ class Builder
 
     protected $fields = [];
 
+    protected $grouping = [];
+
+    protected $database_strictness = true;
 
     /**
      * The model being queried.
@@ -184,6 +188,8 @@ class Builder
         $this->query['columns'] = $columns;
         // Apply order bys feture.
         $this->applyOrderBys();
+        // Apply group by feature.
+        $this->applyGroupBy();
         // Apply whereDoesntHave feature.
         $this->applyWhereDoesntHave();
         // Apply whereHas feature.
@@ -211,11 +217,16 @@ class Builder
      *
      * @param mixed ...$fields
      * @return $this
-     * @author AndreiTanase
-     * @since 2024-04-16
      */
     public function select(...$fields)
     {
+        if (!empty($this->grouping)) {
+            foreach ($fields as $field) {
+                if (!in_array($field, $this->grouping)) {
+                    throw new \Exception("Cannot select field '{$field}' without grouping by it when a groupBy clause is used.");
+                }
+            }
+        }
         $this->fields = array_merge($this->fields, $fields);
         return $this;
     }
@@ -244,6 +255,20 @@ class Builder
     public function orderBy($column, $direction = 'asc')
     {
         $this->orderBys[] = ['column' => $column, 'direction' => strtoupper($direction) == 'ASC' ? 'ASC' : 'DESC'];
+        return $this;
+    }
+
+    /**
+     * Specify the grouping criteria for the query results.
+     *
+     * @param mixed ...$fields
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-17
+     */
+    public function groupBy(...$fields)
+    {
+        $this->grouping = array_merge($this->grouping, $fields);
         return $this;
     }
 
@@ -411,18 +436,18 @@ class Builder
     public function where($column, $operator = null, $value = null)
     {
         if (!is_array($column)) {
-            if ($value){
+            if ($value) {
                 $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $value) !== false;
                 $value = $checkIfValueIsDateTime ? Carbon::parse($value)->format('Y-m-d H:i:s') : $value;
             } elseif ($operator) {
                 $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $operator) !== false;
                 $operator = $checkIfValueIsDateTime ? Carbon::parse($operator)->format('Y-m-d H:i:s') : $operator;
             }
-            if(!$operator) {
+            if (!$operator) {
                 $column = [$column => $value];
-            } else if($column && $operator && $value) {
+            } else if ($column && $operator && $value) {
                 $column = [[$column, $operator, $value]];
-            } else if ($column && $operator && !$value){
+            } else if ($column && $operator && !$value) {
                 $column = [$column => $operator];
             }
         } else {
@@ -494,6 +519,15 @@ class Builder
                     ]);
             }
         }
+    }
+
+    /**
+     * @return void
+     */
+    protected function applyGroupBy()
+    {
+        $this->query['group_by'] = $this->grouping;
+        $this->validateGroupBy();
     }
 
     /**
@@ -615,4 +649,47 @@ class Builder
             }
         }
     }
+
+    /**
+     * Validate that all groupBy fields are included in the select fields or are aggregated.
+     */
+    protected function validateGroupBy()
+    {
+        $arrInternalApiEnv = Common::getConfigOptionsForService('internal');
+        //  // Explicitly enable specific modes, overriding strict setting
+        $this->database_strictness =  isset($arrInternalApiEnv['monolith']['database_strictness']) ? $arrInternalApiEnv['monolith']['database_strictness'] : false;
+        if (!empty($this->grouping) && $this->database_strictness) {
+            if (empty($this->fields)) {
+                throw new \Exception("All group by fields must be either selected or aggregated.");
+            }
+
+            if (is_array($this->fields) && count($this->fields) >= 1 && is_array($this->fields[0])) {
+                $getFields = collect($this->fields)->first();
+            } else {
+                $getFields = $this->fields;
+            }
+
+            foreach ($getFields as $field) {
+                if (!in_array($field, $this->grouping)) {
+//                    throw new \Exception("All selected fields must be part of the group by clause or use an aggregate function when grouping is applied. Field '{$field}' is not properly grouped. - MySql mode strict: 'strict' -> is enabled in database configuration.");
+                }
+            }
+            foreach ($this->grouping as $groupField) {
+                if (!in_array($groupField, $getFields)) {
+                    throw new \Exception("Group by field '{$groupField}' must be included in the select fields.");
+                }
+            }
+        }
+
+        if (!empty($this->orderBys)) {
+            foreach ($this->orderBys as $order) {
+                if (!in_array($order['column'], $this->grouping) && !in_array($order['column'], $this->fields)) {
+                    throw new \Exception("Order by field '{$order['column']}' must be included in the group by clause or selected fields under ONLY_FULL_GROUP_BY mode.");
+                }
+            }
+        }
+
+    }
+
+
 }
