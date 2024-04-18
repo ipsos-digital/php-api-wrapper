@@ -83,9 +83,10 @@ class Api
             return $this->getCache($key);
         }
 
+        // Change the method to post by default to avoid long URLs.
         return $this->setCache(
             $key,
-            $this->getTransport()->request('/'.$endpoint, $filters) ?? []
+            $this->getTransport()->request('/'.$endpoint . '/get', $filters, 'post') ?? []
         );
     }
 
@@ -111,6 +112,7 @@ class Api
         if ($this->hasCache($key)) {
             return $this->getCache($key);
         }
+        // Change the method to post by default to avoid long URLs.
         return $this->getTransport()->request($uri, $filters) ?? [];
     }
 

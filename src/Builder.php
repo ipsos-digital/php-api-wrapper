@@ -20,7 +20,7 @@ class Builder
     const PAGINATION_MAPPING_CURRENT_PAGE = 'current_page';
 
     /**
-     * @var bool
+     * @var boolean
      */
     protected $database_strictness = true;
     /**
@@ -36,7 +36,7 @@ class Builder
      */
     protected $relations = [];
     /**
-     * @var bool
+     * @var boolean
      */
     protected $withTrashed = false;
     /**
@@ -51,6 +51,17 @@ class Builder
      * @var array
      */
     protected $conditions = [];
+    /**
+     * @var array
+     */
+    public $operators = [
+        '=', '<', '>', '<=', '>=', '<>', '!=', '<=>',
+        'like', 'like binary', 'not like', 'ilike',
+        '&', '|', '^', '<<', '>>',
+        'rlike', 'regexp', 'not regexp',
+        '~', '~*', '!~', '!~*', 'similar to',
+        'not similar to', 'not ilike', '~~*', '!~~*',
+    ];
 
     /**
      * The model being queried.
@@ -444,13 +455,21 @@ class Builder
     /**
      * Add a basic where clause to the query.
      *
-     * @param      $field
-     * @param null $value
+     * @param string|array $column
+     * @param mixed $operator
+     * @param mixed $value
+     * @param string $boolean
      *
      * @return self
      */
-    public function where($column, $operator = null, $value = null)
+    public function where($column, $operator = null, $value = null, $boolean = 'and')
     {
+        // Here we will make some assumptions about the operator. If only 2 values are
+        // passed to the method, we will assume that the operator is an equals sign
+        // and keep going. Otherwise, we'll require the operator to be passed in.
+        [$value, $operator] = $this->prepareValueAndOperator(
+            $value, $operator, func_num_args() === 2
+        );
         if (!is_array($column)) {
             if ($value) {
                 $checkIfValueIsDateTime = \DateTime::createFromFormat('Y-m-d H:i:s', $value) !== false;
@@ -460,11 +479,19 @@ class Builder
                 $operator = $checkIfValueIsDateTime ? Carbon::parse($operator)->format('Y-m-d H:i:s') : $operator;
             }
             if (!$operator) {
-                $column = [$column => $value];
+                $column = [
+                    [
+                        $column => $value],
+                    'operator' => $boolean
+                ];
             } else if ($column && $operator && $value) {
-                $column = [[$column, $operator, $value]];
+                $column = [[$column, $operator, $value, $boolean]];
             } else if ($column && $operator && !$value) {
-                $column = [$column => $operator];
+                $column = [
+                    [
+                        $column => $operator,
+                        'operator' => $boolean]
+                ];
             }
         } else {
             // Fix this:
@@ -482,7 +509,6 @@ class Builder
                 $item = $checkIfValueIsDateTime ? Carbon::parse($item)->format('Y-m-d H:i:s') : $item;
             });
         }
-
         $this->query = array_merge($this->query, $column);
 
         return $this;
@@ -673,7 +699,7 @@ class Builder
     {
         $arrInternalApiEnv = Common::getConfigOptionsForService('internal');
         //  // Explicitly enable specific modes, overriding strict setting
-        $this->database_strictness =  isset($arrInternalApiEnv['monolith']['database_strictness']) ? $arrInternalApiEnv['monolith']['database_strictness'] : false;
+        $this->database_strictness = isset($arrInternalApiEnv['monolith']['database_strictness']) ? $arrInternalApiEnv['monolith']['database_strictness'] : false;
         if (!empty($this->grouping) && $this->database_strictness) {
             if (empty($this->fields)) {
                 throw new \Exception("All group by fields must be either selected or aggregated.");
@@ -722,10 +748,78 @@ class Builder
             'column' => $column,
             'values' => $values,
         ];
-        
+
         $this->query['conditions'] = $this->conditions;
 
         return $this;
     }
+
+    /**
+     * Add a "where in" clause to the query.
+     *
+     * @param string $column
+     * @param array $values
+     * @return $this
+     * @author AndreiTanase
+     * @since 2024-04-17
+     */
+    public function whereNotIn($column, array $values)
+    {
+        $this->conditions[] = [
+            'type' => 'whereNotIn',
+            'column' => $column,
+            'values' => $values,
+        ];
+
+        $this->query['conditions'] = $this->conditions;
+
+        return $this;
+    }
+
+    public function orWhere($column, $operator = null, $value = null)
+    {
+        [$value, $operator] = $this->prepareValueAndOperator(
+            $value, $operator, func_num_args() === 2
+        );
+
+        return $this->where($column, $operator, $value, 'or');
+    }
+
+    /**
+     * Prepare the value and operator for a where clause.
+     *
+     * @param string $value
+     * @param string $operator
+     * @param bool $useDefault
+     * @return array
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function prepareValueAndOperator($value, $operator, $useDefault = false)
+    {
+        if ($useDefault) {
+            return [$operator, '='];
+        } elseif ($this->invalidOperatorAndValue($operator, $value)) {
+            throw new InvalidArgumentException('Illegal operator and value combination.');
+        }
+
+        return [$value, $operator];
+    }
+
+    /**
+     * Determine if the given operator and value combination is legal.
+     *
+     * Prevents using Null values with invalid operators.
+     *
+     * @param string $operator
+     * @param mixed $value
+     * @return bool
+     */
+    protected function invalidOperatorAndValue($operator, $value)
+    {
+        return is_null($value) && in_array($operator, $this->operators) &&
+            !in_array($operator, ['=', '<>', '!=']);
+    }
+
 
 }
