@@ -467,17 +467,17 @@ class Builder
             }
             if (!$operator) {
                 $column = [
-                    [
-                        $column => $value],
+                    [$column => $value],
                     'operator' => $boolean
                 ];
-            } else if ($column && $operator && $value) {
+            } else if ($column && $operator && !is_null($value)) {
                 $column = [[$column, $operator, $value, $boolean]];
-            } else if ($column && $operator && !$value) {
+            } else if ($column && $operator && is_null($value)) {
                 $column = [
                     [
                         $column => $operator,
-                        'operator' => $boolean]
+                        'operator' => $boolean
+                    ]
                 ];
             }
         } else {

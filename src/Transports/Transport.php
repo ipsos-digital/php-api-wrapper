@@ -139,6 +139,8 @@ class Transport implements TransportInterface
         switch ($method) {
             case 'get':
                 $url = $this->getUrl($endpoint, $data);
+                ddd($url);
+                ddd("Method: $method");
                 Log::channel('internalApi')->info("API request ($method) to: " . $url);
                 $this->getClient()->get($url);
                 break;

@@ -84,6 +84,10 @@ trait HasEloquentRelations
         return (new static())->getEntity();
     }
 
+    public static function getOriginalTableName() {
+        return (new static())->getTable();
+
+    }
     /**
      * Create anonymous Eloquent model filled with current attributes.
      *

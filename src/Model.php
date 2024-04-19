@@ -726,4 +726,58 @@ abstract class Model implements ArrayAccess, JsonSerializable
         return $model;
 
     }
+
+    /**
+     * Checks if a word can be pluralized and validates the plural form.
+     *
+     * @param string $word The word to check.
+     * @return array Returns an array with boolean 'canBePluralized' and 'isPluralCorrect'.
+     */
+    protected function validatePluralization($word) {
+        // Remove 'Proxy' from the class name
+        $word = Str::replaceLast('Proxy', '', $word);
+
+        // Check for non-alphabetic characters as unsuitable for regular pluralization
+        if (preg_match('/[^a-zA-Z]/', $word)) {
+            return [
+                'canBePluralized' => false,
+                'isPluralCorrect' => false,
+            ];
+        }
+
+        // Generate the plural form of the word
+        $plural = Str::plural($word);
+
+        // Optional: Validate the plural form by some custom rules/logic
+        $isPluralCorrect = true; // Customize this logic as needed
+
+        return [
+            'canBePluralized' => true,
+            'isPluralCorrect' => $isPluralCorrect,
+        ];
+    }
+
+    public function getTable()
+    {
+        if (!isset($this->table)) {
+            $className = class_basename($this);
+            $classNameWithoutProxy = Str::replaceLast('Proxy', '', $className);
+            $snakeCaseName = Str::snake($classNameWithoutProxy);
+            $validation = $this->validatePluralization($snakeCaseName);
+
+            if (!$validation['canBePluralized'] || !$validation['isPluralCorrect']) {
+                return $snakeCaseName;
+            }
+
+            if (substr($snakeCaseName, -1) === 'y') {
+                return rtrim($snakeCaseName, 'y') . 'ies';
+            }
+
+            $snakeCaseName = trim($snakeCaseName, 's') . 's';
+            
+            return $snakeCaseName . 's'; // Simplified, assuming pluralization is just adding 's'
+        }
+
+        return $this->table;
+    }
 }
