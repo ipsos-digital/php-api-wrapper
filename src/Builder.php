@@ -470,15 +470,24 @@ class Builder
                     [$column => $value],
                     'operator' => $boolean
                 ];
-            } else if ($column && $operator && !is_null($value)) {
+            } elseif ($column && $operator && !is_null($value)) {
                 $column = [[$column, $operator, $value, $boolean]];
-            } else if ($column && $operator && is_null($value)) {
-                $column = [
-                    [
-                        $column => $operator,
-                        'operator' => $boolean
-                    ]
-                ];
+            } elseif ($column && $operator && is_null($value)) {
+                if (func_num_args() === 3 && $column && $operator && is_null($value)) {
+                    // we have $value = null (but, null from the user input)
+                    $column = [[$column, $operator, 'null', $boolean]];
+                } elseif (func_num_args() === 2 && $column && $operator == "=" && is_null($value)) {
+                    // we have $operator = null and $value = null (but, null from the user input)
+                    $column = [[$column, $operator, 'null', $boolean]];
+                } else {
+                    $column = [
+                        [
+                            $column => $operator,
+                            'operator' => $boolean
+                        ]
+                    ];
+                }
+
             }
         } else {
             // Fix this:
