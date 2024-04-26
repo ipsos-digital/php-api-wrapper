@@ -49,6 +49,14 @@ class Builder
      * @var array
      */
     protected $conditions = [];
+    /**
+     * @var bool
+     */
+    protected $hasLimit = false;
+    /**
+     * @var int
+     */
+    protected $limitValue = 0;
 
     /**
      * The model being queried.
@@ -130,7 +138,10 @@ class Builder
 
     public function first($columns = ['*'])
     {
-        return $this->take(1)->get($columns)->first() ?? null;
+        $this->take(1);
+        $this->get($columns)->first();
+        return $this ?? null;
+       // return $this->take(1) ?? null;
     }
 
     /**
@@ -254,7 +265,13 @@ class Builder
      */
     public function limit($value)
     {
-        return $this->where('limit', $value);
+        $this->hasLimit = true;
+        $this->limitValue = $value;
+        $this->applyLimit();
+
+        return $this;
+
+        // return $this->where('limit', $value);
     }
 
     /**
@@ -470,9 +487,9 @@ class Builder
                     [$column => $value],
                     'operator' => $boolean
                 ];
-            } elseif ($column && $operator && !is_null($value)) {
+            } else if ($column && $operator && !is_null($value)) {
                 $column = [[$column, $operator, $value, $boolean]];
-            } elseif ($column && $operator && is_null($value)) {
+            } else if ($column && $operator && is_null($value)) {
                 if (func_num_args() === 3 && $column && $operator && is_null($value)) {
                     // we have $value = null (but, null from the user input)
                     $column = [[$column, $operator, 'null', $boolean]];

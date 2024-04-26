@@ -227,4 +227,21 @@ trait BuilderQueryHelpersTrait
         return is_null($value) && in_array($operator, $this->operators) &&
             !in_array($operator, ['=', '<>', '!=']);
     }
+
+    /**
+     * @return void
+     * @throws \Exception
+     * @author AndreiTanase
+     * @since 2024-04-17
+     */
+    protected function applyLimit()
+    {
+        if (!$this->hasLimit) {
+            return;
+        }
+        if ($this->limitValue >= 0) {
+            $this->query['limit'] = $this->limitValue;
+        }
+    }
+
 }
