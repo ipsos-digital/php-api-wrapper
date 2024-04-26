@@ -139,9 +139,8 @@ class Builder
     public function first($columns = ['*'])
     {
         $this->take(1);
-        $this->get($columns)->first();
-        return $this ?? null;
-       // return $this->take(1) ?? null;
+        return $this->get($columns)->first();
+
     }
 
     /**
@@ -268,7 +267,7 @@ class Builder
         $this->hasLimit = true;
         $this->limitValue = $value;
         $this->applyLimit();
-
+        
         return $this;
 
         // return $this->where('limit', $value);
@@ -523,6 +522,7 @@ class Builder
             });
         }
         $this->query = array_merge($this->query, $column);
+
 
         return $this;
     }
