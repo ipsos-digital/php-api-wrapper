@@ -178,6 +178,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     }
 
     // @TODO: Improve thie function, with focus on the elseif ($key === "relations" && is_array($value))
+
     /**
      * Fills the entry with the supplied attributes.
      *
@@ -209,7 +210,13 @@ abstract class Model implements ArrayAccess, JsonSerializable
         foreach ($relations as $relationName => $relationData) {
             $relationInstance = $this->getRelationInstance($relationName, $proxyModelsPath);
             if ($relationInstance && is_array($relationData)) {
-                $relationModel = $relationInstance->newInstance($relationData, true);
+                if (count($relationData) > 1 && (isset($relationData[0]) && is_array($relationData[0]))) {
+                    $relationModel = collect($relationData)->map(function ($relationData) use ($relationInstance) {
+                        return $relationInstance->newInstance($relationData, true);
+                    });
+                } else {
+                    $relationModel = $relationInstance->newInstance($relationData, true);
+                }
                 $this->setRelation($relationName, $relationModel);
             }
         }
@@ -738,7 +745,8 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * @param string $word The word to check.
      * @return array Returns an array with boolean 'canBePluralized' and 'isPluralCorrect'.
      */
-    protected function validatePluralization($word) {
+    protected function validatePluralization($word)
+    {
         // Remove 'Proxy' from the class name
         $word = Str::replaceLast('Proxy', '', $word);
 

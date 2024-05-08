@@ -2,6 +2,8 @@
 
 namespace Cristal\ApiWrapper\Bridges\Laravel;
 
+use App\Models\Collaboration\Topic;
+use App\Models\Survey;
 use Cristal\ApiWrapper\Relations\RelationInterface;
 use Cristal\ApiWrapper\Bridges\Laravel\Relations\HasOne as BridgeHasOne;
 use Cristal\ApiWrapper\Bridges\Laravel\Relations\HasMany as BridgeHasMany;
@@ -11,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use LogicException;
+use Illuminate\Support\Collection;
 
 trait HasEloquentRelations
 {
@@ -58,6 +61,48 @@ trait HasEloquentRelations
         return new BridgeHasOne($this, $instance, $foreignKey, $localKey);
     }
 
+    public function hasManyThrough($related, $through, $firstKey = null, $secondKey = null, $localKey = null, $secondLocalKey = null)
+    {
+        $throughInstance = $this->newRelatedInstance($through);
+        $relatedInstance = $this->newRelatedInstance($related);
+
+        $firstKey = $firstKey ?: $this->getForeignKey();
+        $localKey = $localKey ?: $this->getKeyName();
+        $secondKey = $secondKey ?: $throughInstance->getForeignKey();
+        $secondLocalKey = $secondLocalKey ?: $throughInstance->getKeyName();
+
+        // Fetch final entities based on intermediate results
+        if ($throughInstance instanceof Eloquent) {
+            $intermediates = new HasMany($throughInstance->newQuery(), $this->createFakeEloquentModel(), $firstKey, $localKey);
+        } else {
+            $intermediates = new BridgeHasMany($this, $throughInstance, $firstKey, $localKey);
+            //$intermediates = $this->performApiRequest($throughInstance, $localKey, $firstKey);
+        }
+        $finalEntities = [];
+        foreach ($intermediates->get() as $intermediate) {
+            $getRelated = $relatedInstance->where($secondKey, $intermediate[$secondLocalKey])->get();
+            if (count($getRelated)) {
+                $finalEntities[] = $getRelated;
+            }
+        }
+
+        // Combine and return final entities
+        return $this->combineResults($finalEntities);
+    }
+
+    protected function combineResults(array $entitiesArray)
+    {
+        $combinedResults = new Collection();
+
+        foreach ($entitiesArray as $entities) {
+            foreach ($entities as $entity) {
+                $combinedResults->push($entity);
+            }
+        }
+
+        return $combinedResults;
+    }
+
     /**
      * @return BridgeBuilder
      */
@@ -84,10 +129,12 @@ trait HasEloquentRelations
         return (new static())->getEntity();
     }
 
-    public static function getOriginalTableName() {
+    public static function getOriginalTableName()
+    {
         return (new static())->getTable();
 
     }
+
     /**
      * Create anonymous Eloquent model filled with current attributes.
      *
@@ -95,8 +142,7 @@ trait HasEloquentRelations
      */
     protected function createFakeEloquentModel()
     {
-        $fakeModel = new class() extends Eloquent
-        {
+        $fakeModel = new class() extends Eloquent {
         };
         $fakeModel->exists = true;
         $fakeModel->forceFill($this->getAttributes());
