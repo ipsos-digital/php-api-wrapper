@@ -50,7 +50,7 @@ class Builder
      */
     protected $conditions = [];
     /**
-     * @var bool
+     * @var boolean
      */
     protected $hasLimit = false;
     /**
@@ -64,6 +64,14 @@ class Builder
      * @var Model
      */
     protected $model;
+
+    public function getRelations()
+    {
+        if (!empty($this->relations)){
+           return $this->relations;
+        }
+        return [];
+    }
 
 
     /**
@@ -267,7 +275,7 @@ class Builder
         $this->hasLimit = true;
         $this->limitValue = $value;
         $this->applyLimit();
-        
+
         return $this;
 
         // return $this->where('limit', $value);

@@ -225,11 +225,16 @@ abstract class Model implements ArrayAccess, JsonSerializable
     protected function getRelationInstance($relationName, $proxyModelsPath)
     {
         if (!method_exists($this, $relationName)) return null;
-
         $relationBaseClassName = $this->assembleClassName($relationName);
         $fullClassName = $proxyModelsPath . $relationBaseClassName . 'Proxy';
         if (class_exists($fullClassName)) {
             return new $fullClassName;
+        } else if ($this->$relationName()->getModel() &&
+            $this->$relationName()->getModel()->getOriginalTableName() != $relationName &&
+            $this->$relationName()->getModel() instanceof self) {
+            // The Proxy Model is correct, but the relation name is different
+            // Ex: $this->user_profile() has on base the UserExtendedProxy, but the relation name is different
+            return $this->$relationName()->getModel();
         }
 
         return $this->$relationName();
@@ -774,7 +779,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
             }
 
             $snakeCaseName = trim($snakeCaseName, 's') . 's';
-            
+
             return $snakeCaseName . 's'; // Simplified, assuming pluralization is just adding 's'
         }
 
