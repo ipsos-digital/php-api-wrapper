@@ -61,6 +61,22 @@ trait HasEloquentRelations
         return new BridgeHasOne($this, $instance, $foreignKey, $localKey);
     }
 
+    /**
+     * Define a many-to-many relationship.
+     *
+     * @description This method is used to define a many-to-many relationship, similar with Eloquent.
+     * @param string $related
+     * @param string $through
+     * @param string $firstKey
+     * @param string $secondKey
+     * @param string $localKey
+     * @param string $secondLocalKey
+     *
+     * @author AndreiTanase
+     * @since 2024-05-08
+     *
+     * @return Collection
+     */
     public function hasManyThrough($related, $through, $firstKey = null, $secondKey = null, $localKey = null, $secondLocalKey = null)
     {
         $throughInstance = $this->newRelatedInstance($through);
