@@ -67,12 +67,17 @@ trait BuilderQueryHelpersTrait
     protected function loadRelations()
     {
         foreach ($this->relations as $relation) {
+            $relationInstance = $this->getModel()->$relation();
             if (isset($relation) && is_string($relation) &&
-                method_exists($this->getModel(), $relation)) {
+                method_exists($this->getModel(), $relation) &&
+                !$relationInstance->getModel() instanceof Eloquent // Exclude Eloquent models relations
+            ) {
                 $withRelation['with'][] = $relation;
             }
         }
-        $this->query = array_merge($this->query, $withRelation);
+        if (isset($withRelation)) {
+            $this->query = array_merge($this->query, $withRelation);
+        }
     }
 
     /**

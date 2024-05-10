@@ -646,7 +646,7 @@ class Builder
         return $this;
     }
 
-    /**
+          /**
      * @param $column
      * @param $operator
      * @param $value
