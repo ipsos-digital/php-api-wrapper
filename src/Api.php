@@ -52,7 +52,14 @@ class Api
             return $this->$name(...$arguments);
         }
 
-        preg_match('/^(get|create|update|delete)([\w\-_\/]+?)$/', $name, $matches);
+        // Original code
+        //preg_match('/^(get|create|update|updateOrCreate|delete)([\w\-_\/]+?)$/', $name, $matches);
+        // Adjusted regular expression to handle compound actions like updateOrCreate or createOrUpdate
+        preg_match('/^(get|createOrUpdate|updateOrCreate|create|update|delete)([\w\-_\/]+?)$/', $name, $matches);
+
+        if (empty($matches)) {
+            throw new \BadMethodCallException("Method {$name} does not exist.");
+        }
 
         $endpoint = lcfirst($matches[2]);
 
@@ -71,13 +78,13 @@ class Api
      * Call API for find all results of the entrypoint.
      *
      * @param string $endpoint
-     * @param array  $filters
+     * @param array $filters
      *
      * @return array
      */
     protected function findAll(string $endpoint, array $filters = []): array
     {
-        $key = md5(__FUNCTION__.$endpoint.json_encode($filters));
+        $key = md5(__FUNCTION__ . $endpoint . json_encode($filters));
 
         if ($this->hasCache($key)) {
             return $this->getCache($key);
@@ -86,7 +93,7 @@ class Api
         // Change the method to post by default to avoid long URLs.
         return $this->setCache(
             $key,
-            $this->getTransport()->request('/'.$endpoint . '/get', $filters, 'post') ?? []
+            $this->getTransport()->request('/' . $endpoint . '/get', $filters, 'post') ?? []
         );
     }
 
@@ -94,8 +101,8 @@ class Api
      * Call API for find entity of entrypoint.
      *
      * @param string $endpoint
-     * @param int    $id
-     * @param array  $filters
+     * @param int $id
+     * @param array $filters
      *
      * @return array
      */
@@ -107,8 +114,8 @@ class Api
             throw new ApiEntityNotFoundException([]);
         }
 
-        $uri = '/'.$endpoint.'/'.$id;
-        $key = $uri.'?'.http_build_query($filters);
+        $uri = '/' . $endpoint . '/' . $id;
+        $key = $uri . '?' . http_build_query($filters);
         if ($this->hasCache($key)) {
             return $this->getCache($key);
         }
@@ -120,16 +127,16 @@ class Api
      * Call API for update an entity.
      *
      * @param string $endpoint
-     * @param int    $id
+     * @param int $id
      * @param        $attributes
      *
      * @return mixed|array
      */
     protected function update(string $endpoint, $id, $attributes)
     {
-        $key = $endpoint.'/'.$id.'?';
+        $key = $endpoint . '/' . $id . '?';
 
-        return $this->setCache($key, $this->getTransport()->request('/'.$endpoint.'/'.$id, $attributes, 'put') ?? []);
+        return $this->setCache($key, $this->getTransport()->request('/' . $endpoint . '/' . $id, $attributes, 'put') ?? []);
     }
 
     /**
@@ -142,22 +149,62 @@ class Api
      */
     protected function create(string $endpoint, $attributes)
     {
-        return $this->getTransport()->request('/'.$endpoint, $attributes, 'post') ?? [];
+        return $this->getTransport()->request('/' . $endpoint, $attributes, 'post') ?? [];
+    }
+
+    /**
+     * Call API for update or create an entity
+     *
+     * @param string $endpoint
+     * @param        $attributes
+     *
+     * @return mixed|array
+     * @author AndreiTanase
+     * @since 2024-05-14
+     */
+    protected function updateOrCreate(string $endpoint, $attributes, array $values = [])
+    {
+        $payload = [
+            'attributes' => $attributes,
+            'values' => $values
+        ];
+
+        return $this->getTransport()->request('/create_or_update/' . $endpoint, $payload, 'post') ?? [];
+    }
+
+    /**
+     * Call API for update or create an entity
+     *
+     * @param string $endpoint
+     * @param        $attributes
+     *
+     * @return mixed|array
+     * @author AndreiTanase
+     * @since 2024-05-14
+     */
+    protected function createOrUpdate(string $endpoint, $attributes, array $values = [])
+    {
+        $payload = [
+            'attributes' => $attributes,
+            'values' => $values
+        ];
+
+        return $this->getTransport()->request('/create_or_update/' . $endpoint, $payload, 'post') ?? [];
     }
 
     /**
      * Call API for delete an entity.
      *
      * @param string $endpoint
-     * @param int    $id
+     * @param int $id
      *
      * @return mixed|array
      */
     protected function delete(string $endpoint, $id, array $data = [])
     {
-        $key = $endpoint.'/'.$id.'?';
+        $key = $endpoint . '/' . $id . '?';
         $this->deleteCache($key);
 
-        return $this->getTransport()->request('/'.$endpoint.'/'.$id, $data, 'delete') ?? [];
+        return $this->getTransport()->request('/' . $endpoint . '/' . $id, $data, 'delete') ?? [];
     }
 }

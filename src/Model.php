@@ -177,6 +177,53 @@ abstract class Model implements ArrayAccess, JsonSerializable
         return $model;
     }
 
+
+    /**
+     * Update or create a new record matching the attributes, and fill it with values.
+     *
+     * @param array $attributes
+     * @param array $values
+     * @return static
+     * @author AndreiTanase
+     * @since 2024-05-14
+     */
+    public static function updateOrCreate(array $attributes, array $values = [])
+    {
+        $model = new static($attributes);
+        $model->fill($values);
+        $model->performUpdateOrCreate();
+
+        return $model;
+
+    }
+
+    /**
+     * Update or create a new record matching the attributes, and fill it with values.
+     *
+     * @param array $attributes
+     * @param array $values
+     * @return static
+     * @author AndreiTanase
+     * @since 2024-05-14
+     */
+   protected function performUpdateOrCreate()
+    {
+        $dirty = $this->getDirty();
+        $attributes = $this->getAttributes();
+        if (count($dirty) > 0 && count(array_diff($attributes, $dirty))) {
+            $updatedField = $this->getApi()->{'createOrUpdate' . ucfirst($this->getEntity())}(array_diff($attributes, $dirty), $dirty);
+            if (isset($updatedField['data']) && is_array($updatedField['data']) && count($updatedField['data']) > 0) {
+                $updatedField = $updatedField['data'];
+            }
+            $this->fill($updatedField);
+            $this->syncChanges();
+            $this->wasRecentlyCreated = true;
+        }
+
+
+
+    }
+
     // @TODO: Improve thie function, with focus on the elseif ($key === "relations" && is_array($value))
 
     /**
