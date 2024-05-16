@@ -158,8 +158,10 @@ class Transport implements TransportInterface
                 $this->getClient()->get($url);
                 break;
             case 'post':
-                ddd($this->getUrl($endpoint) . ' --- ' . $this->encodeBody($data));
+                ddd($this->getUrl($endpoint));
                 $this->payload = $this->encodeBody($data);
+                ddd($this->payload);
+
                 Log::channel('internalApi')->info("API request ($method) to: " . $this->getUrl($endpoint) . $this->encodeBody($data));
                 $this->url = $this->getUrl($endpoint);
                 $this->getClient()->post(

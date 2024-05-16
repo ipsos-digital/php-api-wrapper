@@ -99,7 +99,6 @@ class Builder
         if (empty($this->scopes)) {
             return $this->query;
         }
-
         return array_merge(
             array_merge(...array_values($this->scopes)),
             $this->query
@@ -259,7 +258,28 @@ class Builder
                 }
             }
         }
+
         $this->fields = array_merge($this->fields, $fields);
+
+        return $this;
+    }
+
+    /**
+     * Add a raw select expression to the query.
+     *
+     * @param string $expression
+     *
+     * @return $this
+     *
+     * @author AndreiTanase
+     * @since 2024-05-16
+     */
+    public function selectRaw(string $expression) {
+
+        if ($expression) {
+            $this->query['select_raw'] = $expression;
+        }
+
         return $this;
     }
 

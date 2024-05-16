@@ -211,16 +211,14 @@ abstract class Model implements ArrayAccess, JsonSerializable
         $dirty = $this->getDirty();
         $attributes = $this->getAttributes();
         if (count($dirty) > 0 && count(array_diff($attributes, $dirty))) {
-            $updatedField = $this->getApi()->{'createOrUpdate' . ucfirst($this->getEntity())}(array_diff($attributes, $dirty), $dirty);
-            if (isset($updatedField['data']) && is_array($updatedField['data']) && count($updatedField['data']) > 0) {
-                $updatedField = $updatedField['data'];
-            }
+            $updatedField = $this->getApi()->{'updateOrCreate' . ucfirst($this->getEntity())}(array_diff($attributes, $dirty), $dirty);
+//            if (isset($updatedField['data']) && is_array($updatedField['data']) && count($updatedField['data']) > 0) {
+//                $updatedField = $updatedField['data'];
+//            }
             $this->fill($updatedField);
             $this->syncChanges();
             $this->wasRecentlyCreated = true;
         }
-
-
 
     }
 
@@ -235,6 +233,9 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function fill(array $attributes = [])
     {
+        if (isset($attributes['data']) && is_array($attributes['data']) && count($attributes['data']) > 0) {
+            $attributes = $attributes['data'];
+        }
         foreach ($attributes as $key => $value) {
             if ($key === 'relations' && is_array($value)) {
                 $this->handleRelations($value);

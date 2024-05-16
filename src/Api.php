@@ -54,8 +54,8 @@ class Api
 
         // Original code
         //preg_match('/^(get|create|update|updateOrCreate|delete)([\w\-_\/]+?)$/', $name, $matches);
-        // Adjusted regular expression to handle compound actions like updateOrCreate or createOrUpdate
-        preg_match('/^(get|createOrUpdate|updateOrCreate|create|update|delete)([\w\-_\/]+?)$/', $name, $matches);
+        preg_match('/^(get|updateOrCreate|create|update|delete)([\w\-_\/]+?)$/', $name, $matches);
+
 
         if (empty($matches)) {
             throw new \BadMethodCallException("Method {$name} does not exist.");
@@ -153,14 +153,13 @@ class Api
     }
 
     /**
-     * Call API for update or create an entity
+     * Call API for update or create an entity.
      *
      * @param string $endpoint
      * @param        $attributes
+     * @param array $values
      *
      * @return mixed|array
-     * @author AndreiTanase
-     * @since 2024-05-14
      */
     protected function updateOrCreate(string $endpoint, $attributes, array $values = [])
     {
@@ -169,27 +168,7 @@ class Api
             'values' => $values
         ];
 
-        return $this->getTransport()->request('/create_or_update/' . $endpoint, $payload, 'post') ?? [];
-    }
-
-    /**
-     * Call API for update or create an entity
-     *
-     * @param string $endpoint
-     * @param        $attributes
-     *
-     * @return mixed|array
-     * @author AndreiTanase
-     * @since 2024-05-14
-     */
-    protected function createOrUpdate(string $endpoint, $attributes, array $values = [])
-    {
-        $payload = [
-            'attributes' => $attributes,
-            'values' => $values
-        ];
-
-        return $this->getTransport()->request('/create_or_update/' . $endpoint, $payload, 'post') ?? [];
+        return $this->getTransport()->request('/update-or-create/' . $endpoint, $payload, 'post') ?? [];
     }
 
     /**
