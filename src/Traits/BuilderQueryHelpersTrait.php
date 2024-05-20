@@ -68,10 +68,11 @@ trait BuilderQueryHelpersTrait
     {
         foreach ($this->relations as $relation) {
             $relationInstance = $this->getModel()->$relation();
-            if (isset($relation) && is_string($relation) &&
-                method_exists($this->getModel(), $relation) &&
-                !$relationInstance->getModel() instanceof Eloquent // Exclude Eloquent models relations
-            ) {
+            $issetRelationString = isset($relation) && is_string($relation);
+            // Check if the relation is an instance of Eloquent, and if is an instance of Eloquent, then load the relation
+            $existRelationInstance = method_exists($this->getModel(), $relation) &&
+                !$relationInstance->getModel() instanceof Eloquent;
+            if ($relationInstance && $issetRelationString && $existRelationInstance) {
                 $withRelation['with'][] = $relation;
             }
         }

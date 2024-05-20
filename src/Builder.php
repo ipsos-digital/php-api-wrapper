@@ -81,17 +81,17 @@ class Builder
      */
     public function getQuery()
     {
-        // Load relations if specified
-        if (!empty($this->relations)) {
-            $this->loadRelations();
-        }
-
         if ($this->withTrashed) {
             $this->query['with_trashed'] = '1';
         }
 
         if (!empty($this->fields)) {
             $this->query['fields'] = $this->fields;
+        }
+
+        // Load relations if specified
+        if (!empty($this->relations)) {
+            $this->loadRelations();
         }
 
         // Ffix: array_merge() expects at least 1 parameter, 0 given ($this->scopes is null) #53
