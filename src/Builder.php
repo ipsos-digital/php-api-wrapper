@@ -20,6 +20,8 @@ class Builder
     const PAGINATION_MAPPING_TOTAL = 'total';
     const PAGINATION_MAPPING_PER_PAGE = 'per_page';
     const PAGINATION_MAPPING_CURRENT_PAGE = 'current_page';
+    const PAGINATION_MAPPING_LAST_PAGE = 'last_page';
+
 
     /**
      * @var array
@@ -81,6 +83,15 @@ class Builder
      */
     public function getQuery()
     {
+        // Apply order bys feture.
+        $this->applyOrderBys();
+        // Apply group by feature.
+        $this->applyGroupBy();
+        // Apply whereDoesntHave feature.
+        $this->applyWhereDoesntHave();
+        // Apply whereHas feature.
+        $this->applyWhereHas();
+
         if ($this->withTrashed) {
             $this->query['with_trashed'] = '1';
         }
@@ -217,15 +228,6 @@ class Builder
     {
         // Modify the query to specify columns if not all are needed
         $this->query['columns'] = $columns;
-        // Apply order bys feture.
-        $this->applyOrderBys();
-        // Apply group by feature.
-        $this->applyGroupBy();
-        // Apply whereDoesntHave feature.
-        $this->applyWhereDoesntHave();
-        // Apply whereHas feature.
-        $this->applyWhereHas();
-
         $entities = $this->raw();
 
         return $this->instanciateModels($entities);
@@ -294,11 +296,10 @@ class Builder
     {
         $this->hasLimit = true;
         $this->limitValue = $value;
-        $this->applyLimit();
+        $this->applyLimit($value);
 
         return $this;
 
-        // return $this->where('limit', $value);
     }
 
     /**
@@ -470,16 +471,23 @@ class Builder
     public function paginate(?int $perPage = null, ?int $page = 1)
     {
         $this->limit($perPage);
-        $this->where([static::PAGINATION_MAPPING_PAGE => $page]);
+        $this->query[static::PAGINATION_MAPPING_PAGE] = $page;
+        $this->query[static::PAGINATION_MAPPING_PER_PAGE] = $perPage;
+        $this->where(static::PAGINATION_MAPPING_PAGE, $page);
 
         $instance = $this->getModel();
         $entities = $this->raw();
+        $meta = $entities['meta'] ?? [];
+        $meta['path'] = \Request::url();
 
         return [
             'data' => $this->instanciateModels($entities),
-            'total' => $entities[static::PAGINATION_MAPPING_TOTAL] ?? null,
-            'per_page' => $entities[static::PAGINATION_MAPPING_PER_PAGE] ?? $perPage,
-            'current_page' => $entities[static::PAGINATION_MAPPING_CURRENT_PAGE] ?? $page
+            'total' => $entities['meta'][static::PAGINATION_MAPPING_TOTAL] ?? null,
+            'per_page' => $entities['meta'][static::PAGINATION_MAPPING_PER_PAGE] ?? $perPage,
+            'current_page' => $entities['meta'][static::PAGINATION_MAPPING_CURRENT_PAGE] ?? $page,
+            'last_page' => $entities['meta'][static::PAGINATION_MAPPING_LAST_PAGE] ?? null,
+            'options' => $meta,
+
         ];
     }
 
@@ -551,6 +559,21 @@ class Builder
         }
         $this->query = array_merge($this->query, $column);
 
+
+        return $this;
+    }
+
+    /**
+     * Add a raw where clause to the query.
+     *
+     * @param  string  $sql
+     * @param  mixed   $bindings
+     * @param  string  $boolean
+     * @return $this
+     */
+    public function whereRaw($sql, $bindings = [], $boolean = 'and')
+    {
+        $this->query['where_raw'][] = ['type' => 'raw', 'sql' => $sql, 'boolean' => $boolean];
 
         return $this;
     }

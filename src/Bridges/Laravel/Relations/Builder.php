@@ -30,7 +30,8 @@ class Builder extends CoreBuilder
             $entities['data'],
             $entities['total'],
             $entities['per_page'],
-            $entities['current_page']
+            $entities['current_page'],
+            isset($entities['options']) ? $entities['options'] : []
         );
     }
 

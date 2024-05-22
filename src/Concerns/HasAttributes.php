@@ -200,6 +200,25 @@ trait HasAttributes
     }
 
     /**
+     * Remove an attribute from the model.
+     *
+     * @param  string  $key
+     * @return void
+     * @author AndreiTanase
+     * @since 2024-05-22
+     */
+    public function removeAttribute($key)
+    {
+        if (array_key_exists($key, $this->attributes)) {
+            unset($this->attributes[$key]);
+        }
+
+        if (array_key_exists($key, $this->relations)) {
+            unset($this->relations[$key]);
+        }
+    }
+
+    /**
      * Sync a single original attribute with its current value.
      *
      * @param string $attribute

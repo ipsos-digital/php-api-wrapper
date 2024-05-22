@@ -775,6 +775,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function newInstance($attributes = [], $exists = false)
     {
+        
         // Ffix: Model::find($id) returns an empty Model as opposed to null
         // https://github.com/CristalTeam/php-api-wrapper/issues/33
         if (count($attributes) === 0) {

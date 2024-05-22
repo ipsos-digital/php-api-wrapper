@@ -240,10 +240,10 @@ trait BuilderQueryHelpersTrait
      * @author AndreiTanase
      * @since 2024-04-17
      */
-    protected function applyLimit()
+    protected function applyLimit($value)
     {
         if (!$this->hasLimit) {
-            return;
+            return $this->where('limit', $value);
         }
         if ($this->limitValue >= 0) {
             $this->query['limit'] = $this->limitValue;
