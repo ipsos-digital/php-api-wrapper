@@ -5,11 +5,15 @@ namespace Cristal\ApiWrapper;
 use App\Classes\Common;
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
 use Cristal\ApiWrapper\Traits\BuilderQueryHelpersTrait;
+use Cristal\ApiWrapper\Concerns\Scope;
 use Illuminate\Database\Eloquent\Model as Eloquent;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Cristal\ApiWrapper\Concerns\SoftDeletingScope;
+
 
 class Builder
 {
@@ -38,7 +42,7 @@ class Builder
     /**
      * @var boolean
      */
-    protected $withTrashed = false;
+    protected $softDelete = false;
     /**
      * @var array
      */
@@ -59,7 +63,34 @@ class Builder
      * @var int
      */
     protected $limitValue = 0;
-
+    /**
+     * @var boolean
+     */
+    protected $isQueryWithNullValue = false;
+    /**
+     * All of the globally registered builder macros.
+     *
+     * @var array
+     */
+    protected static $macros = [];
+    /**
+     * All of the locally registered builder macros.
+     *
+     * @var array
+     */
+    protected $localMacros = [];
+    /**
+     * Applied global scopes.
+     *
+     * @var array
+     */
+    protected $scopes = [];
+    /**
+     * Removed global scopes.
+     *
+     * @var array
+     */
+    protected $removedScopes = [];
     /**
      * The model being queried.
      *
@@ -70,7 +101,7 @@ class Builder
     public function getRelations()
     {
         if (!empty($this->relations)){
-           return $this->relations;
+            return $this->relations;
         }
         return [];
     }
@@ -92,10 +123,6 @@ class Builder
         // Apply whereHas feature.
         $this->applyWhereHas();
 
-        if ($this->withTrashed) {
-            $this->query['with_trashed'] = '1';
-        }
-
         if (!empty($this->fields)) {
             $this->query['fields'] = $this->fields;
         }
@@ -104,31 +131,18 @@ class Builder
         if (!empty($this->relations)) {
             $this->loadRelations();
         }
-
         // Ffix: array_merge() expects at least 1 parameter, 0 given ($this->scopes is null) #53
         // https://github.com/CristalTeam/php-api-wrapper/issues/53
         if (empty($this->scopes)) {
             return $this->query;
         }
+
         return array_merge(
             array_merge(...array_values($this->scopes)),
             $this->query
         );
     }
 
-    /**
-     * Applied global scopes.
-     *
-     * @var array
-     */
-    protected $scopes = [];
-
-    /**
-     * Removed global scopes.
-     *
-     * @var array
-     */
-    protected $removedScopes = [];
 
     /**
      * Set a model instance for the model being queried.
@@ -165,9 +179,9 @@ class Builder
      * Execute the query and get the first result or throw an exception.
      *
      * @param array $columns
-     * @return \Illuminate\Database\Eloquent\Model|static
+     * @return Model|static
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      *
      */
     public function firstOrFail($columns = ['*'])
@@ -193,18 +207,26 @@ class Builder
 
     public function findOrFail($field, $columns = ['*'], $value = null)
     {
+
         if (!isset($this->query['columns']) && !empty($columns)) {
             $this->query['columns'] = $columns;
         }
 
         if (is_array($field)) {
             $this->query = array_merge($this->query, ['id' => $field]);
+            // Prevent the query to be executed if the value is null
+            if ($this->isQueryWithNullValue){
+                return null;
+            }
             return $this->where($this->query)->get($columns);
         } elseif (!is_int($field) && $value !== null && count($this->query)) {
+            // Prevent the query to be executed if the value is null
+            if ($this->isQueryWithNullValue){
+                return null;
+            }
             $this->query = array_merge($this->query, [$field => $value]);
             return $this->where($this->query)->get($columns)[0] ?? null;
         }
-
 
         $data = $this->model->getApi()->{'get' . ucfirst($this->model->getEntity())}($field, $this->getQuery());
 
@@ -226,10 +248,14 @@ class Builder
      */
     public function get($columns = ['*'])
     {
+        // Prevent the query to be executed if the value is null
+        if ($this->isQueryWithNullValue){
+            return null;
+        }
+
         // Modify the query to specify columns if not all are needed
         $this->query['columns'] = $columns;
         $entities = $this->raw();
-
         return $this->instanciateModels($entities);
     }
 
@@ -332,20 +358,6 @@ class Builder
     }
 
     /**
-     * Include soft-deleted records in the query results.
-     *
-     * @return $this
-     * @author AndreiTanase
-     * @since 2024-04-13
-     *
-     */
-    public function withTrashed()
-    {
-        $this->withTrashed = true;
-        return $this;
-    }
-
-    /**
      * Add an "with" clause to the query.
      *
      * @param mixed $relations
@@ -381,13 +393,17 @@ class Builder
      * Register a new global scope.
      *
      * @param string $identifier
-     * @param array $scope
+     * @param Scope|\Closure  $scope
      *
      * @return $this
      */
-    public function withGlobalScope($identifier, array $scope)
+    public function withGlobalScope($identifier, $scope)
     {
         $this->scopes[$identifier] = $scope;
+
+        if (method_exists($scope, 'extend')) {
+            $scope->extend($this);
+        }
 
         return $this;
     }
@@ -409,13 +425,16 @@ class Builder
     /**
      * Apply the given scope on the current builder instance.
      *
-     * @param array $scope
-     * @param array $parameters
-     *
+     * @param  callable  $scope
+     * @param  array  $parameters
      * @return mixed
      */
-    protected function callScope(array $scope, $parameters = [])
+    protected function callScope(callable $scope, $parameters = [])
     {
+//        array_unshift($parameters, $this);
+
+//        $query = $this->getQuery();
+
         [$model, $method] = $scope;
 
         return $model->$method($this, ...$parameters) ?? $this;
@@ -471,8 +490,8 @@ class Builder
     public function paginate(?int $perPage = null, ?int $page = 1)
     {
         $this->limit($perPage);
-        $this->query[static::PAGINATION_MAPPING_PAGE] = $page;
-        $this->query[static::PAGINATION_MAPPING_PER_PAGE] = $perPage;
+        $this->query['page'] = $page;
+        $this->query['per_page'] = $perPage;
         $this->where(static::PAGINATION_MAPPING_PAGE, $page);
 
         $instance = $this->getModel();
@@ -503,6 +522,10 @@ class Builder
      */
     public function where($column, $operator = null, $value = null, $boolean = 'and')
     {
+        if ($this->softDelete) {
+            $this->whereNull($this->model->getQualifiedDeletedAtColumn());
+        }
+
         // Here we will make some assumptions about the operator. If only 2 values are
         // passed to the method, we will assume that the operator is an equals sign
         // and keep going. Otherwise, we'll require the operator to be passed in.
@@ -557,8 +580,8 @@ class Builder
                 $item = $checkIfValueIsDateTime ? Carbon::parse($item)->format('Y-m-d H:i:s') : $item;
             });
         }
+        $this->isQueryWithNullValue = $this->detectNullValueInArray($column);
         $this->query = array_merge($this->query, $column);
-
 
         return $this;
     }
@@ -689,7 +712,7 @@ class Builder
         return $this;
     }
 
-          /**
+    /**
      * @param $column
      * @param $operator
      * @param $value
@@ -707,4 +730,136 @@ class Builder
         return $this->where($column, $operator, $value, 'or');
     }
 
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     * @since 2024-06-04
+     * @author AndreiTanase
+     *
+     */
+    public function scopes(array $scopes)
+    {
+        $builder = $this;
+
+        foreach ($scopes as $scope => $parameters) {
+            // If the scope key is an integer, then the scope was passed as the value and
+            // the parameter list is empty, so we will format the scope name and these
+            // parameters here. Then, we'll be ready to call the scope on the model.
+            if (is_int($scope)) {
+                [$scope, $parameters] = [$parameters, []];
+            }
+
+            // Next we'll pass the scope callback to the callScope method which will take
+            // care of grouping the "wheres" properly so the logical order doesn't get
+            // messed up when adding scopes. Then we'll return back out the builder.
+            $builder = $builder->callScope(
+                [$this->model, 'scope'.ucfirst($scope)],
+                (array) $parameters
+            );
+        }
+
+        return $builder;
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function setSoftDelete($softDelete = true)
+    {
+        $this->softDelete = $softDelete;
+
+        return $this;
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function getSoftDelete()
+    {
+        return $this->softDelete;
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function restore()
+    {
+        return $this->withTrashed()->update([$this->model->getDeletedAtColumn() => null]);
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function forceDelete()
+    {
+        $this->withTrashed();
+        return $this->getQuery()->delete();
+    }
+
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function onlyTrashed()
+    {
+        $this->withoutGlobalScope(SoftDeletingScope::class)->whereNotNull($this->model->getDeletedAtColumn())->setSoftDelete(false)->getQuery();
+        return $this;
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function withTrashed()
+    {
+        $this->withoutGlobalScope(SoftDeletingScope::class)->setSoftDelete(true);
+        $this->query['softDelete'] = $this->softDelete;
+
+        return $this;
+    }
+
+    /**
+     * @param $column
+     * @param $operator
+     * @param $value
+     * @return $this|Builder
+     *  @since 2024-06-04
+     *  @author AndreiTanase
+     */
+    public function withoutTrashed()
+    {
+        $this->withoutGlobalScope(SoftDeletingScope::class)->whereNull($this->model->getDeletedAtColumn())->setSoftDelete(true)->getQuery();
+        return $this;
+    }
 }

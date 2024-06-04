@@ -15,6 +15,7 @@ use Exception;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use JsonSerializable;
+use Cristal\ApiWrapper\Concerns\SoftDeletes;
 
 //abstract class Model extends Authenticatable implements ArrayAccess, JsonSerializable
 abstract class Model implements ArrayAccess, JsonSerializable
@@ -24,6 +25,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     use HasGlobalScopes;
     use HidesAttributes;
     use QueriesRelationships;
+    use SoftDeletes;
 
     /**
      * The entity model's name on Api.
@@ -73,6 +75,20 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * @var bool
      */
     public $wasRecentlyCreated = false;
+
+    /**
+     * The name of the "created at" column.
+     *
+     * @var string
+     */
+    const CREATED_AT = 'created_at';
+
+    /**
+     * The name of the "updated at" column.
+     *
+     * @var string
+     */
+    const UPDATED_AT = 'updated_at';
 
     /**
      * Set the Model Api.
@@ -212,9 +228,6 @@ abstract class Model implements ArrayAccess, JsonSerializable
         $attributes = $this->getAttributes();
         if (count($dirty) > 0 && count(array_diff($attributes, $dirty))) {
             $updatedField = $this->getApi()->{'updateOrCreate' . ucfirst($this->getEntity())}(array_diff($attributes, $dirty), $dirty);
-//            if (isset($updatedField['data']) && is_array($updatedField['data']) && count($updatedField['data']) > 0) {
-//                $updatedField = $updatedField['data'];
-//            }
             $this->fill($updatedField);
             $this->syncChanges();
             $this->wasRecentlyCreated = true;
@@ -775,7 +788,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function newInstance($attributes = [], $exists = false)
     {
-        
+
         // Ffix: Model::find($id) returns an empty Model as opposed to null
         // https://github.com/CristalTeam/php-api-wrapper/issues/33
         if (count($attributes) === 0) {
@@ -842,4 +855,30 @@ abstract class Model implements ArrayAccess, JsonSerializable
 
         return $this->table;
     }
+
+    /**
+     * Get the fully qualified "deleted at" column.
+     *
+     * @return string
+     */
+    public function getQualifiedDeletedAtColumn()
+    {
+        return $this->qualifyColumn($this->getDeletedAtColumn());
+    }
+
+    /**
+     * Qualify the given column name by the model's table.
+     *
+     * @param  string  $column
+     * @return string
+     */
+    public function qualifyColumn($column)
+    {
+        if (Str::contains($column, '.')) {
+            return $column;
+        }
+
+        return $this->getTable().'.'.$column;
+    }
+
 }
