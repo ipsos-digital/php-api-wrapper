@@ -791,6 +791,7 @@ class Builder
         return $this->softDelete;
     }
 
+
     /**
      * @param $column
      * @param $operator
