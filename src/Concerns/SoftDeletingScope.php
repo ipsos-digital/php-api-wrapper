@@ -13,7 +13,7 @@ class SoftDeletingScope implements Scope
     public function apply(Builder $builder, Model $model)
     {
         if ($builder->getSoftDelete()) {
-            $builder->whereNull($model->getQualifiedDeletedAtColumn());
+            return $builder->whereNull($model->getQualifiedDeletedAtColumn())->query;
         }
     }
     /**

@@ -222,7 +222,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
      * @author AndreiTanase
      * @since 2024-05-14
      */
-   protected function performUpdateOrCreate()
+    protected function performUpdateOrCreate()
     {
         $dirty = $this->getDirty();
         $attributes = $this->getAttributes();
@@ -719,12 +719,27 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     protected function performDeleteOnModel()
     {
-        $this->getApi()->{'delete' . ucfirst($this->getEntity())}(
-            $this->{$this->primaryKey},
-            array_merge(...array_values($this->getGlobalScopes()))
-        );
+        $scopeQueries = [];
+        $builder = $this->newBuilder();
+        foreach ($this->getGlobalScopes() as $scope) {
+            if (method_exists($scope, 'apply')) {
+                $getScope = $scope->apply($builder, $this);
+                if ($getScope) {
+                    $scopeQueries[] = $getScope;
+                }
+            }
+        }
 
+        if (empty($scopeQueries)) {
+            $this->getApi()->{'delete' . ucfirst($this->getEntity())}($this->{$this->primaryKey});
+        } else {
+            $this->getApi()->{'delete' . ucfirst($this->getEntity())}(
+                $this->{$this->primaryKey},
+                array_merge(...array_values($scopeQueries))
+            );
+        }
         $this->exists = false;
+
     }
 
     /**
@@ -869,7 +884,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     /**
      * Qualify the given column name by the model's table.
      *
-     * @param  string  $column
+     * @param string $column
      * @return string
      */
     public function qualifyColumn($column)
@@ -878,7 +893,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
             return $column;
         }
 
-        return $this->getTable().'.'.$column;
+        return $this->getTable() . '.' . $column;
     }
 
 }

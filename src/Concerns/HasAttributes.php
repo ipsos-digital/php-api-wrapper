@@ -190,8 +190,8 @@ trait HasAttributes
         // If an attribute is listed as a "date", we'll convert it from a DateTime
         // instance into a form proper for storage on the database tables using
         // the connection grammar's date format. We will auto set the values.
-        if (!is_null($value) && $this->isDateAttribute($key)) {
-            $value = $this->fromDateTime($value);
+        if (!is_null($value) && $this->isDateAttribute($key) && !is_array($value)) {
+                $value = $this->fromDateTime($value);
         }
 
         $this->attributes[$key] = $value;
@@ -215,6 +215,19 @@ trait HasAttributes
 
         if (array_key_exists($key, $this->relations)) {
             unset($this->relations[$key]);
+        }
+    }
+
+    /**
+     * Remove a relation from the model.
+     *
+     * @param  string  $relation
+     * @return void
+     */
+    public function removeRelation($relation)
+    {
+        if (array_key_exists($relation, $this->relations)) {
+            unset($this->relations[$relation]);
         }
     }
 
@@ -254,7 +267,6 @@ trait HasAttributes
         if (!$key) {
             return false;
         }
-
         // If the attribute exists in the attribute array or has a "get" mutator we will
         // get the attribute's value. Otherwise, we will proceed as if the developers
         // are asking for a relationship's value. This covers both types of values.
@@ -365,7 +377,6 @@ trait HasAttributes
         if ($this->hasGetMutator($key)) {
             return $this->mutateAttribute($key, $value);
         }
-
         // If the attribute exists within the cast array, we will convert it to
         // an appropriate native PHP type dependant upon the associated value
         // given with the key in the pair. Dayle made this comment line up.
@@ -380,7 +391,6 @@ trait HasAttributes
             !is_null($value)) {
             return $this->asDateTime($value);
         }
-
         return $value;
     }
 

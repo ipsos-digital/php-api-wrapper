@@ -30,7 +30,7 @@ class Builder
     /**
      * @var array
      */
-    protected $query = [];
+    public $query = [];
     /**
      * @var array
      */
@@ -68,18 +68,6 @@ class Builder
      */
     protected $isQueryWithNullValue = false;
     /**
-     * All of the globally registered builder macros.
-     *
-     * @var array
-     */
-    protected static $macros = [];
-    /**
-     * All of the locally registered builder macros.
-     *
-     * @var array
-     */
-    protected $localMacros = [];
-    /**
      * Applied global scopes.
      *
      * @var array
@@ -92,6 +80,11 @@ class Builder
      */
     protected $removedScopes = [];
     /**
+     * @var array
+     */
+    protected $joins = [];
+
+    /**
      * The model being queried.
      *
      * @var Model
@@ -100,7 +93,7 @@ class Builder
 
     public function getRelations()
     {
-        if (!empty($this->relations)){
+        if (!empty($this->relations)) {
             return $this->relations;
         }
         return [];
@@ -137,8 +130,22 @@ class Builder
             return $this->query;
         }
 
+        $scopeQueries = [];
+        foreach ($this->scopes as $scope) {
+            if (method_exists($scope, 'apply')) {
+                $getScope = $scope->apply($this, $this->model);
+                if ($getScope) {
+                    $scopeQueries[] = $getScope;
+                }
+            }
+        }
+
+
+        if (empty($scopeQueries)) {
+            return $this->query;
+        }
         return array_merge(
-            array_merge(...array_values($this->scopes)),
+            array_merge(...array_values($scopeQueries)),
             $this->query
         );
     }
@@ -215,13 +222,13 @@ class Builder
         if (is_array($field)) {
             $this->query = array_merge($this->query, ['id' => $field]);
             // Prevent the query to be executed if the value is null
-            if ($this->isQueryWithNullValue){
+            if ($this->isQueryWithNullValue) {
                 return null;
             }
             return $this->where($this->query)->get($columns);
         } elseif (!is_int($field) && $value !== null && count($this->query)) {
             // Prevent the query to be executed if the value is null
-            if ($this->isQueryWithNullValue){
+            if ($this->isQueryWithNullValue) {
                 return null;
             }
             $this->query = array_merge($this->query, [$field => $value]);
@@ -249,7 +256,7 @@ class Builder
     public function get($columns = ['*'])
     {
         // Prevent the query to be executed if the value is null
-        if ($this->isQueryWithNullValue){
+        if ($this->isQueryWithNullValue) {
             return null;
         }
 
@@ -302,7 +309,8 @@ class Builder
      * @author AndreiTanase
      * @since 2024-05-16
      */
-    public function selectRaw(string $expression) {
+    public function selectRaw(string $expression)
+    {
 
         if ($expression) {
             $this->query['select_raw'] = $expression;
@@ -393,7 +401,7 @@ class Builder
      * Register a new global scope.
      *
      * @param string $identifier
-     * @param Scope|\Closure  $scope
+     * @param Scope|\Closure $scope
      *
      * @return $this
      */
@@ -425,8 +433,8 @@ class Builder
     /**
      * Apply the given scope on the current builder instance.
      *
-     * @param  callable  $scope
-     * @param  array  $parameters
+     * @param callable $scope
+     * @param array $parameters
      * @return mixed
      */
     protected function callScope(callable $scope, $parameters = [])
@@ -589,9 +597,9 @@ class Builder
     /**
      * Add a raw where clause to the query.
      *
-     * @param  string  $sql
-     * @param  mixed   $bindings
-     * @param  string  $boolean
+     * @param string $sql
+     * @param mixed $bindings
+     * @param string $boolean
      * @return $this
      */
     public function whereRaw($sql, $bindings = [], $boolean = 'and')
@@ -755,8 +763,8 @@ class Builder
             // care of grouping the "wheres" properly so the logical order doesn't get
             // messed up when adding scopes. Then we'll return back out the builder.
             $builder = $builder->callScope(
-                [$this->model, 'scope'.ucfirst($scope)],
-                (array) $parameters
+                [$this->model, 'scope' . ucfirst($scope)],
+                (array)$parameters
             );
         }
 
@@ -768,8 +776,8 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function setSoftDelete($softDelete = true)
     {
@@ -783,22 +791,21 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function getSoftDelete()
     {
         return $this->softDelete;
     }
 
-
     /**
      * @param $column
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function restore()
     {
@@ -810,8 +817,8 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function forceDelete()
     {
@@ -825,8 +832,8 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function onlyTrashed()
     {
@@ -839,8 +846,8 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function withTrashed()
     {
@@ -855,12 +862,173 @@ class Builder
      * @param $operator
      * @param $value
      * @return $this|Builder
-     *  @since 2024-06-04
-     *  @author AndreiTanase
+     * @since 2024-06-04
+     * @author AndreiTanase
      */
     public function withoutTrashed()
     {
         $this->withoutGlobalScope(SoftDeletingScope::class)->whereNull($this->model->getDeletedAtColumn())->setSoftDelete(true)->getQuery();
+        return $this;
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @param $type
+     * @param $where
+     * @return $this
+     * @since 2024-06-07
+     * @author AndreiTanase
+     */
+    public function join($table, $first, $operator = null, $second = null, $type = 'inner', $where = false)
+    {
+        if (is_null($second)) {
+            $second = $operator;
+            $operator = '=';
+        }
+
+        $join = [
+            'type' => $type,
+            'table' => $table,
+            'first' => $first,
+            'operator' => $operator,
+            'second' => $second,
+            'where' => $where
+        ];
+
+        $this->joins[] = $join;
+
+        $this->applyJoins();
+
+        return $this;
+    }
+
+
+    /**
+     * @return $this
+     * @since 2024-06-07
+     * @since 2024-06-07
+     */
+    protected function applyJoins(){
+        // Convert joins to query parameters
+        if (!empty($this->joins)) {
+            $joinParams = [];
+            foreach ($this->joins as $join) {
+                $joinParam = $join['type'] . ' join ' . $join['table'];
+                if (isset($join['first'])) {
+                    $joinParam .= ' on ' . $join['first'] . ' ' . $join['operator'] . ' ' . $join['second'];
+                    if ($join['where']) {
+                        $joinParam .= ' where';
+                    }
+                }
+                $joinParams[] = $joinParam;
+            }
+            $this->query['joins'] = implode(';', $joinParams);
+        }
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     * @author AndreiTanase
+     */
+    public function joinWhere($table, $first, $operator, $second, $type = 'inner')
+    {
+        return $this->join($table, $first, $operator, $second, $type, true);
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     * @author AndreiTanase
+     */
+    public function innerJoin($table, $first, $operator = null, $second = null)
+    {
+        return $this->join($table, $first, $operator, $second, 'inner');
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     * @author AndreiTanase
+     */
+    public function leftJoin($table, $first, $operator = null, $second = null)
+    {
+        return $this->join($table, $first, $operator, $second, 'left');
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     * @since 2024-06-07
+     */
+    public function leftJoinWhere($table, $first, $operator, $second)
+    {
+        return $this->joinWhere($table, $first, $operator, $second, 'left');
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     */
+    public function rightJoin($table, $first, $operator = null, $second = null)
+    {
+        return $this->join($table, $first, $operator, $second, 'right');
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     */
+    public function rightJoinWhere($table, $first, $operator, $second)
+    {
+        return $this->joinWhere($table, $first, $operator, $second, 'right');
+    }
+
+    /**
+     * @param $table
+     * @param $first
+     * @param $operator
+     * @param $second
+     * @return $this
+     * @since 2024-06-07
+     */
+    public function crossJoin($table, $first = null, $operator = null, $second = null)
+    {
+        if ($first) {
+            return $this->join($table, $first, $operator, $second, 'cross');
+        }
+
+        $this->joins[] = ['type' => 'cross', 'table' => $table];
+
+        $this->applyJoins();
+
         return $this;
     }
 }

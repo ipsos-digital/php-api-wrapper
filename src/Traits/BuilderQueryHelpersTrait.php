@@ -250,4 +250,30 @@ trait BuilderQueryHelpersTrait
         }
     }
 
+    /**
+     * @description Detect if the value is null in the array
+     * @return void
+     * @throws \Exception
+     * @since 2024-05-30
+     * @author AndreiTanase
+     */
+   protected function detectNullValueInArray($array) {
+        if (!is_array($array)) {
+            return false;
+        }
+        foreach ($array as $nestedArray) {
+            if (is_array($nestedArray) && (count($nestedArray) == 3 || count($nestedArray) == 4)) {
+                if (isset($nestedArray[2]) && $nestedArray[2] === "null") {
+                    return true;
+                }
+            } elseif(is_array($nestedArray) && count($nestedArray) <= 2) {
+                if (isset($nestedArray[1]) && $nestedArray[1] === "null") {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
 }

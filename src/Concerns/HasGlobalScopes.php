@@ -2,6 +2,8 @@
 
 namespace Cristal\ApiWrapper\Concerns;
 
+use \Cristal\ApiWrapper\Concerns\Scoppe;
+
 trait HasGlobalScopes
 {
     /**
@@ -16,10 +18,12 @@ trait HasGlobalScopes
      */
     public static function addGlobalScope($scope, ?array $implementation = null)
     {
-        if (is_string($scope) && !is_null($implementation)) {
+        if (is_string($scope) && ! is_null($implementation)) {
             return static::$globalScopes[static::class][$scope] = $implementation;
-        } elseif (is_array($scope)) {
-            return static::$globalScopes[static::class][spl_object_hash((object) $scope)] = $scope;
+        } elseif ($scope instanceof Closure) {
+            return static::$globalScopes[static::class][spl_object_hash($scope)] = $scope;
+        } elseif ($scope instanceof Scope) {
+            return static::$globalScopes[static::class][get_class($scope)] = $scope;
         }
 
         throw new \InvalidArgumentException('Global scope must be an array.');
