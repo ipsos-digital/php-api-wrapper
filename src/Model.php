@@ -2,6 +2,8 @@
 
 namespace Cristal\ApiWrapper;
 
+use App\Models\Proxy\ApiWrappers\CustomWrapper;
+use App\Services\InternalApiClients\InternalApiTransportService;
 use ArrayAccess;
 use Closure;
 use Cristal\ApiWrapper\Concerns\HasAttributes;
@@ -11,6 +13,7 @@ use Cristal\ApiWrapper\Concerns\HidesAttributes;
 use Cristal\ApiWrapper\Concerns\QueriesRelationships;
 use Cristal\ApiWrapper\Exceptions\ApiException;
 use Cristal\ApiWrapper\Exceptions\MissingApiException;
+use Curl\Curl;
 use Exception;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
@@ -110,9 +113,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
         if (!static::$apis[static::$api] ?? null) {
             throw new MissingApiException();
         }
-
         $api = static::$apis[static::$api];
-
         if (is_callable($api)) {
             $api = $api();
         }
@@ -137,11 +138,17 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function getEntities(): string
     {
-        if (substr($this->entity, -1) === 'y') {
-            return rtrim($this->entity, 'y') . 'ies';
+        $validation = $this->validatePluralization($this->entity);
+        if (!$validation['canBePluralized'] || !$validation['isPluralCorrect']) {
+            if (substr($this->entity, -1) === 'y') {
+                return rtrim($this->entity, 'y') . 'ies';
+            } else {
+                return rtrim($this->entity, 's') . 's';
+            }
         }
 
-        return rtrim($this->entity, 's') . 's';
+        return rtrim(Str::plural($this->entity));
+
     }
 
     public function __construct($fill = [], $exists = false)
@@ -856,16 +863,18 @@ abstract class Model implements ArrayAccess, JsonSerializable
             $validation = $this->validatePluralization($snakeCaseName);
 
             if (!$validation['canBePluralized'] || !$validation['isPluralCorrect']) {
-                return $snakeCaseName;
+                if (substr($snakeCaseName, -1) === 'y') {
+                    return rtrim($snakeCaseName, 'y') . 'ies';
+                }
+                $snakeCaseName = rtrim($snakeCaseName, 's') . 's';
+                return $snakeCaseName . 's'; // Simplified, assuming pluralization is just adding 's'
             }
 
             if (substr($snakeCaseName, -1) === 'y') {
                 return rtrim($snakeCaseName, 'y') . 'ies';
             }
 
-            $snakeCaseName = trim($snakeCaseName, 's') . 's';
-
-            return $snakeCaseName . 's'; // Simplified, assuming pluralization is just adding 's'
+            return rtrim($snakeCaseName);
         }
 
         return $this->table;
