@@ -2,8 +2,6 @@
 
 namespace Cristal\ApiWrapper\Transports;
 
-use App\Models\ApiLog;
-use App\Repositories\ApiLogRepository;
 use Closure;
 use Cristal\ApiWrapper\Exceptions\ApiEntityNotFoundException;
 use Cristal\ApiWrapper\Exceptions\ApiException;
@@ -16,7 +14,6 @@ use Cristal\ApiWrapper\Exceptions\Handlers\UnauthorizedErrorHandler;
 use Cristal\ApiWrapper\MultipartParam;
 use Curl\Curl as CurlClient;
 use CURLFile;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Class Transport
@@ -49,16 +46,6 @@ class Transport implements TransportInterface
     protected $errorHandlers = [];
 
     /**
-     * @var null|string
-     */
-    protected $url = null;
-
-    /**
-     * @var null|string
-     */
-    protected $payload = null;
-
-    /**
      * Transport constructor.
      *
      * @param string $entrypoint
@@ -67,7 +54,7 @@ class Transport implements TransportInterface
     public function __construct(string $entrypoint, CurlClient $client)
     {
         $this->client = $client;
-        $this->entrypoint = rtrim($entrypoint, '/') . '/';
+        $this->entrypoint = rtrim($entrypoint, '/').'/';
 
         $this->setErrorHandler(self::HTTP_NETWORK_ERROR_CODE, new NetworkErrorHandler($this));
         $this->setErrorHandler(self::HTTP_UNAUTHORIZED, new UnauthorizedErrorHandler($this));
@@ -115,7 +102,7 @@ class Transport implements TransportInterface
         $rawResponse = $this->rawRequest($endpoint, $data, $method);
         $httpStatusCode = $this->getClient()->httpStatusCode;
         $response = json_decode($rawResponse, true);
-        $this->saveAPILog($endpoint, $data, $method, $httpStatusCode, $rawResponse);
+
         if ($httpStatusCode >= 200 && $httpStatusCode <= 299) {
             return $response;
         }
@@ -148,22 +135,13 @@ class Transport implements TransportInterface
     public function rawRequest($endpoint, array $data = [], $method = 'get')
     {
         $method = strtolower($method);
+
         switch ($method) {
             case 'get':
                 $url = $this->getUrl($endpoint, $data);
-                $this->url = $url;
-                $this->payload = json_encode($data);
-//                ddd($url);
-                Log::channel('internalApi')->info("API request ($method) to: " . $url);
                 $this->getClient()->get($url);
                 break;
             case 'post':
-//                ddd($this->getUrl($endpoint));
-                $this->payload = $this->encodeBody($data);
-//                ddd($this->payload);
-
-                Log::channel('internalApi')->info("API request ($method) to: " . $this->getUrl($endpoint) . $this->encodeBody($data));
-                $this->url = $this->getUrl($endpoint);
                 $this->getClient()->post(
                     $this->getUrl($endpoint),
                     $this->encodeBody($data),
@@ -172,25 +150,15 @@ class Transport implements TransportInterface
                 break;
             case 'put':
                 $url = $this->getUrl($endpoint);
-                $this->url = $url;
-                $this->payload = $this->encodeBody($data);
                 $this->getClient()->put($url, $this->encodeBody($data));
                 break;
             case 'patch':
                 $url = $this->getUrl($endpoint);
-                $this->url = $url;
-                $this->payload = $this->encodeBody($data);
                 $this->getClient()->patch($url, $this->encodeBody($data));
                 break;
             case 'delete':
                 $url = $this->getUrl($endpoint);
-                $this->url = $url;
-                $this->payload = json_encode($data);
                 $this->getClient()->delete($url, $data);
-                break;
-            default:
-                $this->url = $this->getUrl($endpoint);
-                $this->payload = json_encode($data);
                 break;
         }
 
@@ -208,6 +176,7 @@ class Transport implements TransportInterface
     protected function getUrl(string $endpoint, array $data = [])
     {
         $url = $this->getEntrypoint() . ltrim($endpoint, '/');
+
         return $url . $this->appendData($data);
     }
 
@@ -257,7 +226,7 @@ class Transport implements TransportInterface
                 return $data;
             }
             if ($value instanceof MultipartParam) {
-                $delimiter = '----WebKitFormBoundary' . uniqid('', true);
+                $delimiter = '----WebKitFormBoundary'.uniqid('', true);
 
                 $this->getClient()->setHeader('Content-Type', 'multipart/form-data; boundary=' . $delimiter);
                 return join(array_map(function ($param, $name) use ($delimiter) {
@@ -266,7 +235,7 @@ class Transport implements TransportInterface
                         }
 
                         return $param->render($name, $delimiter);
-                    }, $data, array_keys($data))) . '--' . $delimiter . '--';
+                    }, $data, array_keys($data))).'--'.$delimiter.'--';
 
             }
         }
@@ -289,23 +258,5 @@ class Transport implements TransportInterface
         }
 
         return $this->arrayGet($array[$exploded[0]], $exploded[1]);
-    }
-
-    protected function saveAPILog($endpoint, $data, $method, $httpStatusCode, $rawResponse)
-    {
-        $response = ($httpStatusCode >= 200 && $httpStatusCode <= 299) ? $rawResponse : json_encode([$rawResponse]);
-        $apiLogRepository = new ApiLogRepository();
-        $apiLogRepository->prepareInternalApiDataForLogSave(
-            config('const.api.internal_api_wrapper'),
-            config('models.api_logs_direction.outgoing'),
-            $this->url,
-            $method,
-            $httpStatusCode,
-            $this->payload,
-            request()->ip(),
-            request()->header('User-Agent'),
-            json_encode($this->getResponseHeaders()),
-            $response
-        );
     }
 }
