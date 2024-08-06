@@ -18,6 +18,8 @@ class Api
      */
     protected $transport;
 
+    public $useCache = true;
+
     /**
      * Api constructor.
      *
@@ -185,5 +187,17 @@ class Api
         $this->deleteCache($key);
 
         return $this->getTransport()->request('/' . $endpoint . '/' . $id, $data, 'delete') ?? [];
+    }
+
+    public function setUseCache($useCache)
+    {
+        $this->useCache = $useCache;
+
+        return $this;
+    }
+
+    public function getUseCache()
+    {
+        return $this->useCache;
     }
 }

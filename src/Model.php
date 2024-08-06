@@ -79,6 +79,8 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public $wasRecentlyCreated = false;
 
+    public $useCache = true;
+
     /**
      * The name of the "created at" column.
      *
@@ -103,6 +105,18 @@ abstract class Model implements ArrayAccess, JsonSerializable
         static::$apis[static::$api] = $api;
     }
 
+    public function setUseCache($useCache)
+    {
+        $this->useCache = $useCache;
+
+        return $this;
+    }
+
+    public function getUseCache()
+    {
+        return $this->useCache;
+    }
+
     /**
      * Get the Model Api.
      *
@@ -121,6 +135,8 @@ abstract class Model implements ArrayAccess, JsonSerializable
         if (!$api instanceof Api) {
             throw new MissingApiException();
         }
+
+        $api->setUseCache($this->getUseCache());
 
         return $api;
     }
@@ -351,6 +367,10 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public static function __callStatic($method, $parameters)
     {
+        if ($method == 'setUseCache') {
+            return (new static())->newQuery()->$method(...$parameters);
+        }
+
         return (new static())->$method(...$parameters);
     }
 
@@ -810,7 +830,6 @@ abstract class Model implements ArrayAccess, JsonSerializable
      */
     public function newInstance($attributes = [], $exists = false)
     {
-
         // Ffix: Model::find($id) returns an empty Model as opposed to null
         // https://github.com/CristalTeam/php-api-wrapper/issues/33
         if (count($attributes) === 0) {

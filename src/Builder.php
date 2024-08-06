@@ -99,6 +99,17 @@ class Builder
         return [];
     }
 
+    public function setStaticUseCache($useCache)
+    {
+        $this->model->setUseCache($useCache);
+
+        return $this;
+    }
+
+    public function getStaticUseCache()
+    {
+       return $this->model->getUseCache();
+    }
 
     /**
      * Get the underlying query builder instance.
@@ -255,6 +266,7 @@ class Builder
      */
     public function get($columns = ['*'])
     {
+
         // Prevent the query to be executed if the value is null
         if ($this->isQueryWithNullValue) {
             return null;
@@ -263,6 +275,7 @@ class Builder
         // Modify the query to specify columns if not all are needed
         $this->query['columns'] = $columns;
         $entities = $this->raw();
+
         return $this->instanciateModels($entities);
     }
 

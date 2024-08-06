@@ -102,7 +102,6 @@ class Transport implements TransportInterface
         $rawResponse = $this->rawRequest($endpoint, $data, $method);
         $httpStatusCode = $this->getClient()->httpStatusCode;
         $response = json_decode($rawResponse, true);
-
         if ($httpStatusCode >= 200 && $httpStatusCode <= 299) {
             return $response;
         }
