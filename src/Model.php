@@ -5,6 +5,7 @@ namespace Cristal\ApiWrapper;
 use App\Models\Proxy\ApiWrappers\CustomWrapper;
 use App\Services\InternalApiClients\InternalApiTransportService;
 use ArrayAccess;
+use Carbon\Carbon;
 use Closure;
 use Cristal\ApiWrapper\Concerns\HasAttributes;
 use Cristal\ApiWrapper\Concerns\HasRelationships;
@@ -19,6 +20,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use JsonSerializable;
 use Cristal\ApiWrapper\Concerns\SoftDeletes;
+use DateTime;
+
 
 //abstract class Model extends Authenticatable implements ArrayAccess, JsonSerializable
 abstract class Model implements ArrayAccess, JsonSerializable
@@ -80,6 +83,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
     public $wasRecentlyCreated = false;
 
     public $useCache = true;
+
 
     /**
      * The name of the "created at" column.
@@ -713,7 +717,6 @@ abstract class Model implements ArrayAccess, JsonSerializable
         // this model instance. This will allow developers to hook into these after
         // models are updated, giving them a chance to do any special processing.
         $dirty = $this->getDirty();
-
         if (count($dirty) > 0) {
             $updatedField = $this->getApi()->{'update' . ucfirst($this->getEntity())}($this->{$this->primaryKey}, $dirty);
             $this->fill($updatedField);
@@ -922,6 +925,53 @@ abstract class Model implements ArrayAccess, JsonSerializable
         }
 
         return $this->getTable() . '.' . $column;
+    }
+
+    /**
+     * Update the model's update timestamp.
+     *
+     * @return bool
+     */
+    public function touch()
+    {
+        if (!$this->usesTimestamps()) {
+            return false;
+        }
+
+        $now = new DateTime;
+
+        // Format the DateTime object as a string before assigning it
+        $this->{$this->getUpdatedAtColumn()} = $now->format('Y-m-d H:i:s');
+
+        if ($this->exists) {
+            $saved = $this->isDirty() ? $this->performUpdate() : true;
+        }
+
+        if ($saved) {
+            $this->syncOriginal();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get the name of the "updated at" column.
+     *
+     * @return string
+     */
+    public function getUpdatedAtColumn()
+    {
+        return defined('static::UPDATED_AT') ? static::UPDATED_AT : 'updated_at';
+    }
+
+    /**
+     * Determine if the model uses timestamps.
+     *
+     * @return bool
+     */
+    public function usesTimestamps()
+    {
+        return property_exists($this, 'timestamps') ? $this->timestamps : true;
     }
 
 }

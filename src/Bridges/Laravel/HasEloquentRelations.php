@@ -2,8 +2,9 @@
 
 namespace Cristal\ApiWrapper\Bridges\Laravel;
 
-use App\Models\Collaboration\Topic;
-use App\Models\Survey;
+use Cristal\ApiWrapper\Bridges\Laravel\Relations\BelongsTo as ApiBelongsTo;
+use Cristal\ApiWrapper\Model as ModelApi;
+use Cristal\ApiWrapper\Relations\BelongsTo;
 use Cristal\ApiWrapper\Relations\RelationInterface;
 use Cristal\ApiWrapper\Bridges\Laravel\Relations\HasOne as BridgeHasOne;
 use Cristal\ApiWrapper\Bridges\Laravel\Relations\HasMany as BridgeHasMany;
@@ -60,7 +61,38 @@ trait HasEloquentRelations
 
         return new BridgeHasOne($this, $instance, $foreignKey, $localKey);
     }
-    
+
+    /**
+     * {@inheritdoc}
+     *
+     * @return belongsTo|ApiBelongsTo
+     */
+    public function belongsTo($related, $foreignKey = null, $ownerKey = null, $relation = null)
+    {
+        $instance = $this->newRelatedInstance($related);
+
+        // Support Eloquent relations.
+        if ($instance instanceof Eloquent) {
+            $foreignKey = $foreignKey ?: $this->getForeignKey();
+            $ownerKey = $ownerKey ?: $instance->getKeyName();
+
+            return new \Illuminate\Database\Eloquent\Relations\BelongsTo(
+                $instance->newQuery(), $this->createFakeEloquentModel(), $foreignKey, $ownerKey, $relation
+            );
+        }
+
+        // Support API wrapper models.
+        if ($instance instanceof ModelApi) {
+            $foreignKey = $foreignKey ?: $instance->getForeignKey();
+            $ownerKey = $ownerKey ?: $instance->getKeyName();
+
+            return new ApiBelongsTo($this, $instance, $foreignKey, $ownerKey);
+        }
+
+        return parent::belongsTo($related, $foreignKey, $ownerKey, $relation);
+
+    }
+
     public function hasManyThrough($related, $through, $firstKey = null, $secondKey = null, $localKey = null, $secondLocalKey = null)
     {
         $throughInstance = $this->newRelatedInstance($through);

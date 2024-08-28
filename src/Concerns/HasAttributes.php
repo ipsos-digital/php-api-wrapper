@@ -190,10 +190,11 @@ trait HasAttributes
         // If an attribute is listed as a "date", we'll convert it from a DateTime
         // instance into a form proper for storage on the database tables using
         // the connection grammar's date format. We will auto set the values.
-        if (!is_null($value) && $this->isDateAttribute($key) && !is_array($value)) {
-                $value = $this->fromDateTime($value);
-        }
+        $checkIfIsDateTime = $this->checkIfIsDateTime($value) || $this->isDateAttribute($key);
 
+        if (!is_null($value) && $checkIfIsDateTime && !is_array($value)) {
+            $value = $this->fromDateTime($value);
+        }
         $this->attributes[$key] = $value;
 
         return $this;
@@ -202,7 +203,7 @@ trait HasAttributes
     /**
      * Remove an attribute from the model.
      *
-     * @param  string  $key
+     * @param string $key
      * @return void
      * @author AndreiTanase
      * @since 2024-05-22
@@ -221,7 +222,7 @@ trait HasAttributes
     /**
      * Remove a relation from the model.
      *
-     * @param  string  $relation
+     * @param string $relation
      * @return void
      */
     public function removeRelation($relation)
@@ -440,6 +441,9 @@ trait HasAttributes
      */
     protected function asDateTime($value)
     {
+
+        $value = trim(preg_replace('/[\x00-\x1F\x80-\xFF]/', '', $value));
+
         // If this value is already a Carbon instance, we shall just return it as is.
         // This prevents us having to re-instantiate a Carbon instance when we know
         // it already is one, which wouldn't be fulfilled by the DateTime check.
@@ -471,7 +475,7 @@ trait HasAttributes
         }
 
         // Check for ISO 8601 format.
-        if ($this->isDateFormat($value)){
+        if ($this->isDateFormat($value)) {
             // Convert to Carbon instance
             $date = Carbon::createFromFormat('Y-m-d\TH:i:s.u\Z', $value, 'UTC');
             $value = $date->format('Y-m-d H:i:s');
@@ -483,10 +487,10 @@ trait HasAttributes
         // that is returned back out to the developers after we convert it here.
         try {
             $date = Carbon::createFromFormat($format, $value);
-        } catch (InvalidArgumentException $exception) {
-            Log::error('Could not parse date: ' . $value);
-            Log::error($exception->getMessage());
-            $date = false;
+        } catch (\InvalidArgumentException $exception) {
+            Log::error('Could not parse date: ' . $value . ' with format: ' . $format);
+            Log::error('Exact error message: ' . $exception->getMessage());
+            $date = '';
         }
 
         return $date ?: Carbon::parse($value);
@@ -504,6 +508,10 @@ trait HasAttributes
      * @return bool Returns true if the date string exactly matches the format, false otherwise.
      * The function returns false if any part of the date string is out of place according to the specified format or if the date string is invalid.
      *
+     * @throws \Exception Throws an exception if the Carbon library encounters a problem while parsing the date.
+     * The try-catch block inside the function handles these exceptions to prevent them from causing a crash
+     * and instead returns false to indicate the mismatch or parsing failure.
+     *
      * @example Usage:
      * if (isDateFormat("2019-02-27T13:57:43.000000Z", 'Y-m-d\TH:i:s.u\Z')) {
      *     echo "The string matches the format.";
@@ -511,14 +519,11 @@ trait HasAttributes
      *     echo "The string does not match the format.";
      * }
      *
-     * @throws \Exception Throws an exception if the Carbon library encounters a problem while parsing the date.
-     * The try-catch block inside the function handles these exceptions to prevent them from causing a crash
-     * and instead returns false to indicate the mismatch or parsing failure.
-     *
      * @author AndreiTanase
      * @since 2024-04-11
      */
-    protected function isDateFormat($dateString, $format = 'Y-m-d\TH:i:s.u\Z') {
+    protected function isDateFormat($dateString, $format = 'Y-m-d\TH:i:s.u\Z')
+    {
         try {
             // Create a date object from the given string and format
             $date = Carbon::createFromFormat($format, $dateString, 'UTC');
@@ -698,7 +703,82 @@ trait HasAttributes
      */
     public function getDates()
     {
-        return $this->dates;
+        return empty($this->dates) ? $this->setDates() : $this->dates;
+    }
+
+    /**
+     * Set the date attributes.
+     *
+     * @return array
+     * @since 2024-08-28
+     * @author AndreiTanase
+     */
+    protected function setDates()
+    {
+       return $this->dates = [
+            'created_at',
+            'updated_at',
+            'deleted_at',
+        ];
+
+    }
+
+    /**
+     * Determine whether a value is a valid date or datetime string.
+     *
+     * @param string $string
+     *
+     * @return string|bool
+     * @since 2024-08-28
+     * @author AndreiTanase
+     */
+    public function checkIfIsDateTime($string)
+    {
+        // Regular expressions for various date and datetime formats
+        $dateRegex = '/^\d{4}-\d{2}-\d{2}$/'; // YYYY-MM-DD
+        $dateTimeRegex = '/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/'; // ISO 8601 datetime
+        $unixTimestampRegex = '/^\d{10}$/'; // Unix timestamp (10 digits)
+        $isoWeekRegex = '/^\d{4}-W\d{2}-\d$/'; // ISO week date (e.g., 2024-W08-5)
+        $ordinalDateRegex = '/^\d{4}-\d{3}$/'; // Ordinal date (e.g., 2024-049)
+        $usDateRegex = '/^\d{2}\/\d{2}\/\d{4}$/'; // MM/DD/YYYY
+        $euDateRegex = '/^\d{2}-\d{2}-\d{4}$/'; // DD-MM-YYYY
+        $slashDateRegex = '/^\d{4}\/\d{2}\/\d{2}$/'; // YYYY/MM/DD
+
+        // Check against the different regex patterns
+        if (preg_match($dateRegex, $string)) {
+            return 'date';
+        }
+
+        if (preg_match($dateTimeRegex, $string)) {
+            return 'datetime';
+        }
+
+        if (preg_match($unixTimestampRegex, $string)) {
+            return 'timestamp';
+        }
+
+        if (preg_match($isoWeekRegex, $string)) {
+            return 'iso_week_date';
+        }
+
+        if (preg_match($ordinalDateRegex, $string)) {
+            return 'ordinal_date';
+        }
+
+        if (preg_match($usDateRegex, $string)) {
+            return 'us_date';
+        }
+
+        if (preg_match($euDateRegex, $string)) {
+            return 'eu_date';
+        }
+
+        if (preg_match($slashDateRegex, $string)) {
+            return 'slash_date';
+        }
+
+        // If no format matches, return false
+        return false;
     }
 
     /**

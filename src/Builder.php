@@ -99,6 +99,11 @@ class Builder
         return [];
     }
 
+
+    /**
+     * @param $useCache
+     * @return $this
+     */
     public function setStaticUseCache($useCache)
     {
         $this->model->setUseCache($useCache);
@@ -106,6 +111,9 @@ class Builder
         return $this;
     }
 
+    /**
+     * @return bool|mixed
+     */
     public function getStaticUseCache()
     {
        return $this->model->getUseCache();

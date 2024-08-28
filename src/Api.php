@@ -20,6 +20,7 @@ class Api
 
     public $useCache = true;
 
+
     /**
      * Api constructor.
      *
