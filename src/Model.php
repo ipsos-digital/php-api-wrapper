@@ -84,6 +84,8 @@ abstract class Model implements ArrayAccess, JsonSerializable
 
     public $useCache = true;
 
+    protected $xRequestId = null;
+
 
     /**
      * The name of the "created at" column.
@@ -277,6 +279,11 @@ abstract class Model implements ArrayAccess, JsonSerializable
             $attributes = $attributes['data'];
         }
         foreach ($attributes as $key => $value) {
+            if ($key == 'request_meta' && is_array($value)) {
+                if (isset($value['request_id'])) {
+                    $this->xRequestId = $value['request_id'];
+                }
+            }
             if ($key === 'relations' && is_array($value)) {
                 $this->handleRelations($value);
             } else {

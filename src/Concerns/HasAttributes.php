@@ -178,6 +178,10 @@ trait HasAttributes
      */
     public function setAttribute($key, $value)
     {
+        if ($key == 'request_meta' || is_array($value)) {
+            return $this;
+        }
+
         // First we will check for the presence of a mutator for the set operation
         // which simply lets the developers tweak the attribute as it is set on
         // the model, such as "json_encoding" an listing of data for storage.
